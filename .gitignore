@@ -1,0 +1,24 @@
+# Local credentials and environment files
+*.env
+.env
+.env.*
+!*.env.example
+!/.env.example
+
+# Local data downloads and generated extracts
+provided-data/drive-materials/
+
+# Python / editor / operating system artifacts
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Public mirror excludes locally captured hackathon material and account-specific Sarvam snapshots
+provided-data/
+sarvam-knowledge-base/
+

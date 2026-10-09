@@ -1,0 +1,13 @@
+# VANI Lab UI
+- [x] Document frontend integration boundaries for the team's Vercel backend; no backend implementation
+- [x] Replace animal mascots with contemporary Indian women, per updated preference
+- [x] Retain TypeScript; Next.js is unsupported in this fixed workspace
+- [x] Shared app shell, design tokens and navigation
+- [x] Live pipeline, interactive mascots, results and early-stop demo
+- [x] Experiment setup and immutable prompt editing
+- [x] Scorecard, comparison, evidence and decision states
+- [x] Scale-up wizard and segment map
+- [x] Alerts, settings and accessible interactions
+- [x] Browser verification and final checks# VANI Lab UI — follow-up
+- [x] Goal + change screen per product team spec (goal cards, watch chips, diff checker, 4-step frame, env pill)
+- [x] Mascot animations calmed: static frames, no rotation/squeeze (blink optional later)

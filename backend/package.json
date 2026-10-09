@@ -1,0 +1,31 @@
+{
+  "name": "vani-lab-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=../keys.env src/server.ts",
+    "eve:dev": "node --env-file=../keys.env ./node_modules/eve/bin/eve.js dev --no-ui --no-default-extensions --port 2000",
+    "eve:build": "eve build",
+    "start": "node --env-file=../keys.env --import tsx src/server.ts",
+    "start:render": "node --import tsx src/server.ts",
+    "eve:start": "eve start --host 127.0.0.1 --port 2000",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.67",
+    "@hono/node-server": "^2.1.4",
+    "@supabase/supabase-js": "^2.117.3",
+    "ai": "^7.0.136",
+    "eve": "^0.75.1",
+    "hono": "^4.13.13",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "just-bash": "^3.6.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}
