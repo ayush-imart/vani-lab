@@ -32,17 +32,46 @@ export const BASELINE: VersionId = "A";
 // Synthetic "true" Meeting Fixed rates used by the simulator (match the sample on the pipeline data).
 export const TRUE_RATE: Record<VersionId, number> = { A: 0.115, B: 0.132, C: 0.098 };
 
+// The baseline (control) never drops below this share, so there is always something to compare to.
+export const BASELINE_FLOOR = 10;
+
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
-// Moves up to `step` points from the baseline to `id`. Baseline itself is never scaled up.
-export function applyScaleUp(traffic: TrafficSplit, id: VersionId, step: number): TrafficSplit {
+export type Rates = Partial<Record<VersionId, number>>;
+
+// Moves up to `step` points to `id`, always taking from the worst-performing version first
+// (lowest Meeting Fixed rate; versions with no rate yet are taken from last). The baseline gives
+// traffic too but never below BASELINE_FLOOR. Baseline itself is never scaled up.
+export function applyScaleUp(
+  traffic: TrafficSplit,
+  id: VersionId,
+  step: number,
+  rates: Rates = {},
+): TrafficSplit {
   if (id === BASELINE) return traffic;
-  const moved = Math.min(step, traffic[BASELINE]);
-  return {
-    ...traffic,
-    [BASELINE]: round1(traffic[BASELINE] - moved),
-    [id]: round1(traffic[id] + moved),
-  };
+  const spare = (v: VersionId) =>
+    Math.max(0, traffic[v] - (v === BASELINE ? BASELINE_FLOOR : 0));
+  const donors = versionIds
+    .filter((v) => v !== id && spare(v) > 0)
+    .sort((a, b) => (rates[a] ?? Infinity) - (rates[b] ?? Infinity));
+  let left = step;
+  const next = { ...traffic };
+  donors.forEach((v) => {
+    const moved = Math.min(left, spare(v));
+    next[v] = round1(next[v] - moved);
+    left -= moved;
+  });
+  return { ...next, [id]: round1(traffic[id] + (step - left)) };
+}
+
+// Meeting Fixed rate seen since the version's evidence last restarted (undefined with no calls).
+export function ratesFrom(evidence: Record<VersionId, VersionEvidence>): Rates {
+  const rates: Rates = {};
+  versionIds.forEach((v) => {
+    const { trials, successes } = evidence[v].below;
+    if (trials > 0) rates[v] = successes / trials;
+  });
+  return rates;
 }
 
 // Returns all of `id`'s traffic to the baseline.
@@ -150,7 +179,7 @@ export function stepAutoscale(
       });
       evidence[id] = freshEvidence();
     } else if (above.decision === "reject") {
-      traffic = applyScaleUp(traffic, id, config.stepPoints);
+      traffic = applyScaleUp(traffic, id, config.stepPoints, ratesFrom(evidence));
       events.unshift({
         kind: "scale-up",
         version: id,

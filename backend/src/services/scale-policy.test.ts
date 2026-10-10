@@ -70,3 +70,18 @@ describe("scale policy", () => {
     expect(out.events).toHaveLength(0);
   });
 });
+
+describe("applyScaleUp takes from the worst performer first", () => {
+  it("takes from the lowest-rate version before the baseline", () => {
+    const next = applyScaleUp({ A: 50, B: 25, C: 25 }, "B", 10, { A: 0.115, B: 0.132, C: 0.098 });
+    expect(next).toEqual({ A: 50, B: 35, C: 15 });
+  });
+
+  it("moves on to the next worst once the worst is empty", () => {
+    expect(applyScaleUp({ A: 50, B: 45, C: 5 }, "B", 10, { A: 0.115, C: 0.098 })).toEqual({ A: 45, B: 55, C: 0 });
+  });
+
+  it("never takes the baseline below its floor", () => {
+    expect(applyScaleUp({ A: 10, B: 90, C: 0 }, "B", 10, { A: 0.115 })).toEqual({ A: 10, B: 90, C: 0 });
+  });
+});

@@ -22,17 +22,46 @@ export const INITIAL_TRAFFIC: TrafficSplit = { A: 50, B: 25, C: 25 };
 export const DEFAULT_THRESHOLD_PCT = 12;
 export const BASELINE: VersionSlot = "A";
 
+// The baseline (control) never drops below this share, so there is always something to compare to.
+export const BASELINE_FLOOR = 10;
+
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
-// Moves up to `step` points from the baseline to `id`. Baseline itself is never scaled up.
-export function applyScaleUp(traffic: TrafficSplit, id: VersionSlot, step: number): TrafficSplit {
+export type Rates = Partial<Record<VersionSlot, number>>;
+
+// Moves up to `step` points to `id`, always taking from the worst-performing version first
+// (lowest Meeting Fixed rate; versions with no rate yet are taken from last). The baseline gives
+// traffic too but never below BASELINE_FLOOR. Baseline itself is never scaled up.
+export function applyScaleUp(
+  traffic: TrafficSplit,
+  id: VersionSlot,
+  step: number,
+  rates: Rates = {},
+): TrafficSplit {
   if (id === BASELINE) return traffic;
-  const moved = Math.min(step, traffic[BASELINE]);
-  return {
-    ...traffic,
-    [BASELINE]: round1(traffic[BASELINE] - moved),
-    [id]: round1(traffic[id] + moved),
-  };
+  const spare = (v: VersionSlot) =>
+    Math.max(0, traffic[v] - (v === BASELINE ? BASELINE_FLOOR : 0));
+  const donors = versionSlots
+    .filter((v) => v !== id && spare(v) > 0)
+    .sort((a, b) => (rates[a] ?? Infinity) - (rates[b] ?? Infinity));
+  let left = step;
+  const next = { ...traffic };
+  donors.forEach((v) => {
+    const moved = Math.min(left, spare(v));
+    next[v] = round1(next[v] - moved);
+    left -= moved;
+  });
+  return { ...next, [id]: round1(traffic[id] + (step - left)) };
+}
+
+// Meeting Fixed rate seen since the version's evidence last restarted (undefined with no calls).
+export function ratesFrom(evidence: Record<VersionSlot, Evidence>): Rates {
+  const rates: Rates = {};
+  versionSlots.forEach((v) => {
+    const { trials, successes } = evidence[v].below;
+    if (trials > 0) rates[v] = successes / trials;
+  });
+  return rates;
 }
 
 // Returns all of `id`'s traffic to the baseline.
@@ -110,8 +139,8 @@ export function evaluateTick(input: TickInput): TickOutput {
       events.push(eventOf("scale-down", id, before, traffic[id], below));
       evidence[id] = freshEvidence();
     } else if (above.decision === "reject") {
-      const next = applyScaleUp(traffic, id, config.stepPoints);
-      if (next[id] === before) return; // nothing left to move from the baseline
+      const next = applyScaleUp(traffic, id, config.stepPoints, ratesFrom(evidence));
+      if (next[id] === before) return; // nothing left to take from any other version
       traffic = next;
       events.push(eventOf("scale-up", id, before, traffic[id], above));
       evidence[id] = freshEvidence();
