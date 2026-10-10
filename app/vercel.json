@@ -1,4 +1,5 @@
 {
   "buildCommand": "npm run build",
-  "installCommand": "npm install --no-audit --no-fund"
+  "installCommand": "npm install --no-audit --no-fund",
+  "rewrites": [{ "source": "/api/vani/:path*", "destination": "/api/vani/[...path]" }]
 }
