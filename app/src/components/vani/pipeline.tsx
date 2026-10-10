@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { motion } from "motion/react";
-import { Mascot } from "page-mascot";
 import { AudioLines, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageTitle, Pill } from "./common";
@@ -45,14 +44,14 @@ export function Pipeline() {
                   Live
                 </span>
               </div>
-              <div onClick={() => setCalling(v.id as VersionId)}>
-                <Mascot
-                  directions={v.directions}
-                  reactions={v.reactions}
-                  size={142}
-                  label={`Open a call with Version ${v.id}`}
-                />
-              </div>
+              <button
+                type="button"
+                className="mascot-static"
+                onClick={() => setCalling(v.id as VersionId)}
+                aria-label={`Open a call with Version ${v.id}`}
+              >
+                <img src={v.image} alt={v.name} width={142} height={142} />
+              </button>
             </div>
             <div className="version-info">
               <div className="version-name">

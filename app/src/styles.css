@@ -3573,3 +3573,7 @@ button.perf-big:focus-visible {
   color: var(--muted-foreground);
   font-size: 0.75rem;
 }
+
+/* Live pipeline: static mascot, no tap animation */
+.mascot-static { display: block; margin: 0 auto; padding: 0; border: 0; background: none; cursor: pointer; }
+.mascot-static img { display: block; width: 142px; height: 142px; object-fit: contain; }
