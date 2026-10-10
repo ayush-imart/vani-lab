@@ -82,12 +82,16 @@ export function useLiveFeed(isPaused: boolean) {
         const next = { ...prev };
         metrics.items.forEach((m) => {
           if (m.calls === 0) return;
+          // null = "no data": keep the previous value instead of showing 0
+          const prevKpi = next[m.version];
           next[m.version] = {
-            meetingFixed: round1(m.meetingFixedPct),
-            callDuration: Math.round(m.avgDurationSec),
-            answerRate: round1(m.answerPct),
-            locationConfirmed: round1(m.locationConfirmedPct),
-            callbackRequested: round1(m.callbackRequestedPct),
+            meetingFixed: m.meetingFixedPct === null ? prevKpi.meetingFixed : round1(m.meetingFixedPct),
+            callDuration: m.avgDurationSec === null ? prevKpi.callDuration : Math.round(m.avgDurationSec),
+            answerRate: m.answerPct === null ? prevKpi.answerRate : round1(m.answerPct),
+            locationConfirmed:
+              m.locationConfirmedPct === null ? prevKpi.locationConfirmed : round1(m.locationConfirmedPct),
+            callbackRequested:
+              m.callbackRequestedPct === null ? prevKpi.callbackRequested : round1(m.callbackRequestedPct),
           };
         });
         return next;

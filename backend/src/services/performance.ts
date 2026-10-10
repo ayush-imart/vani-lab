@@ -1,3 +1,4 @@
+import { bucketOf } from "./assignment";
 import { randomInt } from "node:crypto";
 import type {
   AuditRecord,
@@ -20,7 +21,10 @@ const GLID_TAIL = 5;
 
 type Scores = Record<MetricKey, number>;
 const round1 = (n: number) => Math.round(n * 10) / 10;
-const pct = (num: number, den: number) => (den === 0 ? 0 : Math.round((num / den) * 1000) / 10);
+const pct = (num: number, den: number): number | null =>
+  den === 0 ? null : Math.round((num / den) * 1000) / 10;
+const diff1 = (a: number | null, b: number | null): number | null =>
+  a === null || b === null ? null : round1(a - b);
 
 // Raw GLIDs are never stored: only the cohort digit and the last 5 digits.
 export function maskGlid(glid: number | string): { glidLast5: string; cohort: number } {
@@ -51,11 +55,13 @@ export function versionMetricsOf(version: VersionSlot, calls: CallRecord[]): Ver
   return {
     version,
     calls: n,
+    outcomeCalls: m,
     meetingFixedPct: pct(count((o) => o.meetingFixed), m),
-    avgDurationSec: n === 0 ? 0 : round1(calls.reduce((s, c) => s + c.durationSec, 0) / n),
+    avgDurationSec: n === 0 ? null : round1(calls.reduce((s, c) => s + c.durationSec, 0) / n),
     answerPct: pct(count((o) => o.answered), m),
     locationConfirmedPct: pct(count((o) => o.locationConfirmed), m),
     callbackRequestedPct: pct(count((o) => o.callbackRequested), m),
+    units: { pct: "percent of calls with a boolean outcome", avgDurationSec: "seconds" },
   };
 }
 
@@ -70,6 +76,7 @@ export function createPerformanceService(
     async ingest(input: CallIngest): Promise<CallRecord> {
       const rubric = await rubricSvc.get();
       const { glidLast5, cohort } = maskGlid(input.glid);
+      const run = input.experimentId ? await repos.rollouts.getRun(input.experimentId) : undefined;
       const record: CallRecord = {
         id: newId("call"),
         glidLast5,
@@ -78,6 +85,12 @@ export function createPerformanceService(
         at: input.at ?? Date.now(),
         durationSec: input.durationSec,
         outcome: input.outcome,
+        source: "ingest",
+        bucket: bucketOf(input.glid),
+        ...(input.channel ? { channel: input.channel } : {}),
+        ...(input.failed ? { failed: true } : {}),
+        ...(input.evaluator ? { evaluator: input.evaluator } : {}),
+        ...(run ? { experimentId: run.experimentId, stage: run.stagePct } : {}),
         ...(input.scores
           ? { scores: { ...input.scores, overall: overallFor(input.scores, rubric) } }
           : {}),
@@ -157,11 +170,11 @@ export function createPerformanceService(
         versions: metrics.map((m) => ({
           ...m,
           deltaVsBaseline: {
-            meetingFixedPp: round1(m.meetingFixedPct - base.meetingFixedPct),
-            avgDurationSec: round1(m.avgDurationSec - base.avgDurationSec),
-            answerPp: round1(m.answerPct - base.answerPct),
-            locationConfirmedPp: round1(m.locationConfirmedPct - base.locationConfirmedPct),
-            callbackRequestedPp: round1(m.callbackRequestedPct - base.callbackRequestedPct),
+            meetingFixedPp: diff1(m.meetingFixedPct, base.meetingFixedPct),
+            avgDurationSec: diff1(m.avgDurationSec, base.avgDurationSec),
+            answerPp: diff1(m.answerPct, base.answerPct),
+            locationConfirmedPp: diff1(m.locationConfirmedPct, base.locationConfirmedPct),
+            callbackRequestedPp: diff1(m.callbackRequestedPct, base.callbackRequestedPct),
           },
         })),
         note: "Inputs only. Scale decisions come from the mSPRT autoscale log, not from this endpoint.",

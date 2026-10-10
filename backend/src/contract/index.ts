@@ -1,5 +1,6 @@
 // HTTP contract (zod). The frontend can copy this file: it only depends on zod.
 import { z } from "zod";
+import { callEvaluatorSchema, channelSchema } from "./evaluator";
 
 export const kpiKeys = [
   "meetingFixed",
@@ -146,17 +147,22 @@ export const versionDiffSchema = z.object({
 export type VersionRecord = z.infer<typeof versionRecordSchema>;
 
 // ---- experiments ----
+// primaryMetric: one of the four spec primaries (meetingFixed is also the legacy KPI key), or a legacy rubric KPI/overall.
+export const experimentPrimarySchema = z.enum([...metricKeys, "positiveOutcome", "conversationReach", "callbackFixed"]);
 export const createExperimentSchema = z.object({
   name: z.string().min(1).max(120),
   goal: z.string().min(1).max(1000),
-  primaryMetric: metricKeySchema,
+  primaryMetric: experimentPrimarySchema,
   guardrails: z.array(z.string().min(1)).default([]),
   baselineVersionId: z.string(),
   challengerVersionId: z.string(),
 });
 export const experimentSchema = createExperimentSchema.extend({
   id: z.string(),
-  status: z.enum(["draft", "running", "completed"]),
+  // draft -> scheduled/running (start) -> paused (stop/SRM) -> completed | rolled_back | ended
+  status: z.enum(["draft", "scheduled", "running", "paused", "completed", "rolled_back", "ended"]),
+  windowStart: isoDate.optional(), // experiment window, set by start
+  windowEnd: isoDate.optional(),
   createdAt: isoDate,
 });
 export type Experiment = z.infer<typeof experimentSchema>;
@@ -174,6 +180,10 @@ export const callIngestSchema = z.object({
     callbackRequested: z.boolean(),
   }),
   scores: kpiScoresSchema.optional(), // 1-5 per KPI; overall is computed server-side
+  channel: channelSchema.optional(), // default text; voice-only guardrails need voice
+  failed: z.boolean().optional(), // technical call failure (feeds the failed-calls rollback trigger)
+  evaluator: callEvaluatorSchema.optional(), // evaluator tags; missing tags mean "not fully judged yet"
+  experimentId: z.string().optional(), // attach the call to a running experiment (stage is stamped server-side)
 });
 export type CallIngest = z.infer<typeof callIngestSchema>;
 
@@ -188,17 +198,30 @@ export const callRecordSchema = z.object({
   // Absent on calls created from audits: the judge gives scores, not boolean outcomes.
   outcome: callIngestSchema.shape.outcome.optional(),
   scores: scoresWithOverall.optional(),
-  source: z.enum(["ingest", "audit"]).optional(), // default ingest
+  source: z.enum(["ingest", "audit", "simulated"]).optional(), // default ingest; simulated calls never enter /metrics
+  channel: channelSchema.optional(),
+  failed: z.boolean().optional(),
+  evaluator: callEvaluatorSchema.optional(),
+  bucket: z.number().int().min(0).max(99).optional(), // last two GLID digits (00-99), the assignment unit
+  experimentId: z.string().optional(), // set when the call belongs to a running experiment
+  stage: z.number().optional(), // treatment traffic % in force when the call was recorded
 });
 export type CallRecord = z.infer<typeof callRecordSchema>;
+// Rates are booleans-over-calls, in percent, over `outcomeCalls` only (calls that carry an outcome);
+// null means "no data" (never 0%). Judge scores are a different unit (mean 1-5) and live in /leaderboard.
 export const versionMetricsSchema = z.object({
   version: versionSlotSchema,
-  calls: z.number(),
-  meetingFixedPct: z.number(),
-  avgDurationSec: z.number(),
-  answerPct: z.number(),
-  locationConfirmedPct: z.number(),
-  callbackRequestedPct: z.number(),
+  calls: z.number(), // all calls, including score-only audit calls
+  outcomeCalls: z.number(), // denominator of the percentage fields
+  meetingFixedPct: z.number().nullable(),
+  avgDurationSec: z.number().nullable(),
+  answerPct: z.number().nullable(),
+  locationConfirmedPct: z.number().nullable(),
+  callbackRequestedPct: z.number().nullable(),
+  units: z.object({
+    pct: z.literal("percent of calls with a boolean outcome"),
+    avgDurationSec: z.literal("seconds"),
+  }),
 });
 export type VersionMetrics = z.infer<typeof versionMetricsSchema>;
 export const cohortRecordSchema = z.object({
@@ -218,7 +241,7 @@ export const leaderboardRowSchema = z.object({
   rank: z.number(),
   version: versionSlotSchema,
   calls: z.number(),
-  scores: scoresWithOverall.nullable(), // mean 1-5 score over calls that carried scores
+  scores: scoresWithOverall.nullable(), // mean 1-5 JUDGE score over calls that carried scores (not a rate)
 });
 
 // ---- traffic / autoscale ----
@@ -291,7 +314,7 @@ export const tickResultSchema = z.object({
 // ---- notifications ----
 export const notificationSchema = z.object({
   id: z.string(),
-  kind: z.enum(["scale-down", "scale-up", "info"]),
+  kind: z.enum(["scale-down", "scale-up", "info", "rollback", "pause", "alert"]),
   title: z.string(),
   body: z.string(),
   version: versionSlotSchema.optional(),
@@ -383,3 +406,6 @@ export const sessionConfigSchema = z.object({
   inputSampleRate: z.literal(16000),
   outputSampleRate: z.literal(16000),
 });
+
+export * from "./evaluator";
+export * from "./rollout";

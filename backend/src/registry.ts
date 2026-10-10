@@ -11,6 +11,7 @@ import { preprodRoutes } from "./routes/preprod";
 import { sessionRoutes } from "./routes/sessions";
 import { notificationRoutes } from "./routes/notifications";
 import { performanceRoutes } from "./routes/performance";
+import { rolloutRoutes } from "./routes/rollouts";
 import { rubricRoutes } from "./routes/rubric";
 import { versionRoutes } from "./routes/versions";
 import { createFakeAuditor, type AuditorPort } from "./services/auditor";
@@ -21,6 +22,7 @@ import { createNotificationService, type NotificationSender } from "./services/n
 import { createPerformanceService } from "./services/performance";
 import { createPreprodService } from "./services/preprod";
 import { createSessionService, type VoiceConfig } from "./services/sessions";
+import { createRolloutService } from "./services/rollouts";
 import { createRubricService } from "./services/rubric";
 import { createVersionService } from "./services/versions";
 
@@ -39,13 +41,15 @@ export function buildServices(repos: Repos, ports: Ports) {
   const autoscale = createAutoscaleService(repos, notifications);
   const versions = createVersionService(repos);
   const performance = createPerformanceService(repos, rubric, autoscale);
+  const experiments = createExperimentService(repos, versions);
   return {
     rubric,
     notifications,
     autoscale,
     versions,
     audits: createAuditService(repos, ports.auditor, rubric, (a, glid) => performance.ingestAudited(a, glid)),
-    experiments: createExperimentService(repos, versions),
+    experiments,
+    rollouts: createRolloutService(repos, experiments, versions, notifications),
     performance,
     preprod: createPreprodService(repos, versions, {
       fakeAuditor: createFakeAuditor(),
@@ -63,6 +67,7 @@ export const domainRoutes: ((s: Services) => Hono)[] = [
   (s) => performanceRoutes(s.performance),
   (s) => versionRoutes(s.versions),
   (s) => experimentRoutes(s.experiments),
+  (s) => rolloutRoutes(s.rollouts),
   (s) => autoscaleRoutes(s.autoscale),
   (s) => notificationRoutes(s.notifications),
   (s) => preprodRoutes(s.preprod),

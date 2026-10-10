@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { PageTitle, Pill, Avatar, Modal, Note, EmptyState } from "./common";
 import { versions } from "./data";
 import { Autoscale } from "./autoscale";
+import { RolloutPanel } from "./rollout-panel";
 import { Reveal } from "./motion-kit";
 export function ScaleUp() {
   const [key, setKey] = useState("GLID");
@@ -66,6 +67,7 @@ export function ScaleUp() {
           </Button>
         }
       />
+      <RolloutPanel />
       <Autoscale />
       <div className="segments-page">
         <div className="section-heading">

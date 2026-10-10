@@ -1,8 +1,6 @@
 ﻿# VANI Lab
 
-**Agent A/B Testing & Auto-Rollout for voice AI.** Compare prompt versions on controlled traffic, review outcome metrics, run pre-production evaluations, and record rollout decisions.
-
-**Live demo:** [vani-lab.vercel.app](https://vani-lab.vercel.app)
+**Agent A/B Testing & Auto-Rollout for voice AI.** VANI Lab lets teams compare prompt versions on controlled traffic, review outcome metrics, run pre-production evaluations, and record rollout decisions.
 
 ## Architecture
 
@@ -34,7 +32,7 @@ Use `keys.env.example` as a names-only template and fill credentials locally. Ne
 
 ## Deployment
 
-The hackathon deployment uses Vercel Hobby for the frontend, Render Free for the API + Eve service, and Supabase Free for the database. See [deployment runbook](docs/deployment-runbook.md). Deployment branch: `production`.
+The hackathon deployment uses Vercel Hobby for the frontend, Render Free for the API + Eve service, and Supabase Free for persistence. See [deployment runbook](docs/deployment-runbook.md). Deployment branch: `production`.
 
 ## Data handling
 

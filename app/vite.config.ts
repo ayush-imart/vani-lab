@@ -9,6 +9,8 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 const isVercel = Boolean(process.env["VERCEL"]);
 
 export default defineConfig({
+  // call-session.ts imports the Sarvam SDK dynamically; pre-bundle it so dev does not 404 on late discovery.
+  vite: { optimizeDeps: { include: ["sarvam-conv-ai-sdk/browser"] } },
   nitro: isVercel ? { preset: "vercel" } : true,
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).

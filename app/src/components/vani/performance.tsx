@@ -1,17 +1,17 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ChipSelect } from "./chips";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { Link } from "@tanstack/react-router";
 import { ArrowDown, ArrowUp, ArrowUpDown, ArrowUpRight, Pause, Play, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Avatar, PageTitle, Pill, Tip } from "./common";
 import { versions } from "./data";
 import {
@@ -106,6 +106,21 @@ function VerdictLine({ primary, kpis }: { primary: KpiKey; kpis: KpiTable }) {
   );
 }
 
+function Tile({ label, children }: { label: string; children: ReactNode }) {
+  const reduce = useReducedMotion();
+  return (
+    <motion.div
+      className="vd-tile"
+      initial={reduce ? false : { opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.16, ease: "easeOut" }}
+    >
+      <span>{label}</span>
+      <strong>{children}</strong>
+    </motion.div>
+  );
+}
+
 function VersionDetail({
   id,
   feed,
@@ -119,56 +134,76 @@ function VersionDetail({
 }) {
   const row = id ? leaderboard(feed).find((r) => r.id === id) : undefined;
   const v = versions.find((x) => x.id === id);
+  const noData = <span className="vd-nodata">No data</span>;
   return (
-    <Sheet open={id !== null} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent className="perf-sheet">
+    <Dialog open={id !== null} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent
+        className="version-dialog"
+        onOpenAutoFocus={(e) => {
+          // Focus the dialog itself so no score tooltip opens on entry and Esc closes the dialog.
+          e.preventDefault();
+          (e.currentTarget as HTMLElement).focus();
+        }}
+      >
         {id && row && (
           <>
-            <SheetHeader>
-              <SheetTitle>
-                Version {id} Â· {v?.title}
-              </SheetTitle>
-              <SheetDescription>
-                Detailed stats Â· {row.calls} calls across {row.cohorts} of 10 cohorts Â· Sample data
-              </SheetDescription>
-            </SheetHeader>
-            <h3>KPIs</h3>
-            {kpiDefs.map((m) => (
-              <div className="form-summary" key={m.key}>
-                <span>{m.label}</span>
-                <strong>{kpiNumber(kpis, id, m.key as KpiKey)}</strong>
+            <DialogHeader className="vd-head">
+              <Avatar id={id} />
+              <div>
+                <DialogTitle>
+                  Version {id} · {v?.title}
+                </DialogTitle>
+                <DialogDescription>
+                  Detailed stats · {row.calls} calls across {row.cohorts} of 10 cohorts · Sample
+                  data
+                </DialogDescription>
               </div>
-            ))}
-            <h3>Scores (1 to 5)</h3>
-            {metricDefs.map((m) => (
-              <div className="form-summary" key={m.key}>
-                <span>{m.label}</span>
-                <StarScore value={row.scores[m.key]} label={m.label} />
+              <div className="vd-chips">
+                {id === "A" && <Pill>Baseline</Pill>}
+                <Pill tone="neutral">Rank #{row.rank}</Pill>
               </div>
-            ))}
-            <h3>Cohorts (GLID last digit)</h3>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Ends in</th>
-                  <th>Calls</th>
-                  <th>Overall</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cohortBreakdown(feed, id).map((c) => (
-                  <tr key={c.digit}>
-                    <td>{c.digit}</td>
-                    <td>{c.calls}</td>
-                    <td>{c.overall === null ? "-" : c.overall.toFixed(1)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            </DialogHeader>
+            <div className="vd-body">
+              <section role="group" aria-labelledby="vd-kpis">
+                <h3 id="vd-kpis">KPIs</h3>
+                <div className="vd-grid">
+                  {kpiDefs.map((m) => {
+                    const value = kpis[id][m.key as KpiKey];
+                    return (
+                      <Tile key={m.key} label={m.label}>
+                        {typeof value === "number" && Number.isFinite(value)
+                          ? kpiNumber(kpis, id, m.key as KpiKey)
+                          : noData}
+                      </Tile>
+                    );
+                  })}
+                </div>
+              </section>
+              <section role="group" aria-labelledby="vd-scores">
+                <h3 id="vd-scores">Scores (1 to 5)</h3>
+                <div className="vd-grid">
+                  {metricDefs.map((m) => (
+                    <Tile key={m.key} label={m.label}>
+                      <StarScore value={row.scores[m.key]} label={m.label} />
+                    </Tile>
+                  ))}
+                </div>
+              </section>
+              <section role="group" aria-labelledby="vd-cohorts">
+                <h3 id="vd-cohorts">Cohorts (GLID last digit)</h3>
+                <div className="vd-grid vd-cohorts">
+                  {cohortBreakdown(feed, id).map((c) => (
+                    <Tile key={c.digit} label={`Ends in ${c.digit} · ${c.calls} calls`}>
+                      {c.overall === null ? noData : c.overall.toFixed(1)}
+                    </Tile>
+                  ))}
+                </div>
+              </section>
+            </div>
           </>
         )}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
 

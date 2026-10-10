@@ -6,6 +6,7 @@
     "dev": "tsx watch --env-file=../keys.env src/server.ts",
     "eve:dev": "node --env-file=../keys.env ./node_modules/eve/bin/eve.js dev --no-ui --no-default-extensions --port 2000",
     "eve:build": "eve build",
+    "judge:smoke": "tsx --env-file=../keys.env scripts/judge-smoke.ts",
     "start": "node --env-file=../keys.env --import tsx src/server.ts",
     "start:render": "node --import tsx src/server.ts",
     "eve:start": "eve start --host 127.0.0.1 --port 2000",

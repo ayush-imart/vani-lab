@@ -30,8 +30,11 @@ export function buildJudgeMessage(input: AuditorInput): string {
   ].join("\n");
 }
 
-export function createEveAuditor(host: string, model = "sarvam-105b"): AuditorPort {
-  const client = new Client({ host });
+export function createEveAuditor(host: string, model = "sarvam-105b", secret?: string): AuditorPort {
+  const client = new Client({
+    host,
+    ...(secret ? { auth: { basic: { username: "vani-api", password: secret } } } : {}),
+  });
   return {
     async audit(input) {
       const { response } = await client.sessions.create({

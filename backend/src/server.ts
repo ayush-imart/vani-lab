@@ -60,7 +60,7 @@ if (eveProcess) {
   log.info("eve ready", { host: eveUrl.hostname, port: Number(eveUrl.port || 80) });
 }
 const repos = createReposFromEnv(env);
-const auditor = env.AUDITOR === "fake" ? createFakeAuditor(300) : createEveAuditor(env.EVE_HOST);
+const auditor = env.AUDITOR === "fake" ? createFakeAuditor(300) : createEveAuditor(env.EVE_HOST, undefined, env.EVE_API_SECRET);
 const publicApiUrl = env.PUBLIC_API_URL ?? `http://localhost:${env.PORT}`;
 const services = buildServices(repos, {
   auditor,

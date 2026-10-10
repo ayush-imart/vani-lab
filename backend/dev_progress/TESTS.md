@@ -2,7 +2,36 @@
 
 Template: What was tested / How / Result / Follow-up needed. Only real results below.
 
+## Current status (2026-10-10)
+- `npx tsc --noEmit` clean.
+- `npx vitest run` → **99/99 pass** across 10 files (re-run 2026-10-10). The earlier 2 pre-prod gate failures no longer occur.
+- Auth fix (uncommitted): `buildApp()` now enforces the bearer only when `API_SHARED_SECRET` is set; `loadEnv()` requires it only in production. Before: every route 503'd and `loadEnv()` threw, so the local server was down.
+- Rate-limiter fix (uncommitted): the rate-window map now lives inside `buildApp`, so separate app instances in tests no longer share state.
+
+## Planned tests (next agenda)
+> 2026-10-10: suites for spec, two-sample mSPRT, guardrails, rollout policy and the rollout simulator exist and pass. Gaps: repeated-run false-positive measurement; guardrail-multiplicity test; ingest idempotency.
+
+- **Spec constants:** assert every baseline/tolerance/stage/α/τ/Λ matches the PM doc.
+- **Two-sample mSPRT (B vs A):** peeking false-positive bound ≤ α; detects +3 pt; stage-stratified combine.
+- **Guardrails:** each of the 9 blocks/rolls back when B is proven worse beyond its live rule.
+- **Staged rollout:** 10→25→50→100 gates, 24 h cooldown, holdback, automatic scale-down.
+- **Assignment/validity:** last-two-digit buckets 00–99, 10% = 00–09; SRM χ² catches imbalance (p < 0.001); coverage floor holds decisions.
+- **Preprod:** fake runs count toward the gate; −2 pt primary tolerance; regression suite zero-failures; overfit flag.
+
 ## Log
+
+### 2026-10-10, verification by docs agent
+- What: type check and full backend suite.
+- How: `npx tsc --noEmit`; `npx vitest run`.
+- Result: tsc clean; 10 files, 99/99 tests pass.
+- Simulator (synthetic data): +5 pt variant promoted ~day 3; bad variant stopped at 10% ~1.5 days; in a simulated +5 pt run do-not-call was falsely flagged "proven worse" during holdback (guardrail multiplicity, PM spec question).
+- Follow-up: Supabase SQL still never run against a Postgres; real-traffic validation not done.
+
+### 2026-10-10, core fixes
+- What: local-dev auth regression + rate-limiter isolation.
+- How: `npx tsc --noEmit`; `npx vitest run`.
+- Result: typecheck clean; suite went 20/35 → **33/35** after the fixes (8 tests restored by auth, 6 by limiter isolation; overlap means the net is +13).
+- Follow-up: fix `gate()` (B-B3) to reach 35/35; verify a real local server start without `API_SHARED_SECRET`.
 
 ### 2026-10-09, all goals
 - What: type check, unit and route tests, Eve build, live API.

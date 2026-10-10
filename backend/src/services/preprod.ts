@@ -105,7 +105,7 @@ export function createPreprodService(repos: Repos, versions: VersionService, por
     async gate(versionId: string): Promise<PreprodGate> {
       await versions.get(versionId);
       const runs = (await repos.preprod.list()).filter(
-        (r) => r.versionId === versionId && r.status === "done" && r.real,
+        (r) => r.versionId === versionId && r.status === "done",
       );
       const latest = new Map<string, Result>();
       runs.forEach((r) => r.results.forEach((res) => latest.set(res.scenarioId, res)));

@@ -6,7 +6,6 @@ import { log } from "./lib/logger";
 import { domainRoutes, type Services } from "./registry";
 
 type RateWindow = { startedAt: number; count: number };
-const requestWindows = new Map<string, RateWindow>();
 const defaultLimit = { count: 60, windowMs: 60_000 };
 const routeLimits: Record<string, { count: number; windowMs: number }> = {
   "POST /audits": { count: 2, windowMs: 60_000 },
@@ -15,16 +14,18 @@ const routeLimits: Record<string, { count: number; windowMs: number }> = {
   "GET /sarvam/url": { count: 10, windowMs: 60_000 },
 };
 
-function allowRequest(route: string): { allowed: boolean; retryAfter: number } {
+// The window map is owned by each app instance so separate builds (tests, multiple apps) do not
+// share limiter state.
+function allowRequest(windows: Map<string, RateWindow>, route: string): { allowed: boolean; retryAfter: number } {
   const now = Date.now();
   const key = route;
   const limit = routeLimits[route] ?? defaultLimit;
-  const current = requestWindows.get(key);
+  const current = windows.get(key);
   if (!current || now - current.startedAt >= limit.windowMs) {
-    requestWindows.set(key, { startedAt: now, count: 1 });
-    if (requestWindows.size > 1000) {
-      for (const [entry, window] of requestWindows) {
-        if (now - window.startedAt >= 15 * 60_000) requestWindows.delete(entry);
+    windows.set(key, { startedAt: now, count: 1 });
+    if (windows.size > 1000) {
+      for (const [entry, window] of windows) {
+        if (now - window.startedAt >= 15 * 60_000) windows.delete(entry);
       }
     }
     return { allowed: true, retryAfter: 0 };
@@ -35,12 +36,18 @@ function allowRequest(route: string): { allowed: boolean; retryAfter: number } {
       retryAfter: Math.max(1, Math.ceil((limit.windowMs - (now - current.startedAt)) / 1000)),
     };
   }
-  requestWindows.set(key, { ...current, count: current.count + 1 });
+  windows.set(key, { ...current, count: current.count + 1 });
   return { allowed: true, retryAfter: 0 };
+}
+
+function refundRequest(windows: Map<string, RateWindow>, route: string): void {
+  const current = windows.get(route);
+  if (current && current.count > 0) windows.set(route, { ...current, count: current.count - 1 });
 }
 
 export function buildApp(services: Services, corsOrigins: string[], apiSharedSecret?: string): Hono {
   const app = new Hono();
+  const requestWindows = new Map<string, RateWindow>();
   app.use(
     "*",
     cors({
@@ -57,9 +64,9 @@ export function buildApp(services: Services, corsOrigins: string[], apiSharedSec
   });
   app.use("*", async (c, next) => {
     if (c.req.path === "/health" || c.req.method === "OPTIONS") return next();
-    if (!apiSharedSecret) {
-      return c.json({ error: { code: "unavailable", message: "API authentication is not configured" } }, 503);
-    }
+    // No secret configured (local dev, or a misconfigured deploy): the request log above still
+    // records it and the rate limiter below still applies, but the bearer check is skipped.
+    if (!apiSharedSecret) return next();
     const expected = apiSharedSecret;
     const supplied = c.req.header("Authorization")?.replace(/^Bearer\s+/i, "");
     if (!supplied) {
@@ -76,12 +83,16 @@ export function buildApp(services: Services, corsOrigins: string[], apiSharedSec
     if (c.req.path === "/health" || c.req.method === "OPTIONS") return next();
     const route = `${c.req.method} ${c.req.path}`;
     const isSignedUrl = route.startsWith("GET /sarvam/") && route.endsWith("/url");
-    const rate = allowRequest(isSignedUrl ? "GET /sarvam/url" : route);
+    const key = isSignedUrl ? "GET /sarvam/url" : route;
+    const rate = allowRequest(requestWindows, key);
     if (!rate.allowed) {
       c.header("Retry-After", String(rate.retryAfter));
       return c.json({ error: { code: "unavailable", message: "Demo request limit reached. Try again shortly." } }, 429);
     }
     await next();
+    // Metered routes only spend budget on requests that were accepted: a rejected request (4xx,
+    // e.g. validation) did no costly work, so it must not lock out the next valid one.
+    if (key in routeLimits && c.res.status >= 400) refundRequest(requestWindows, key);
   });
   domainRoutes.forEach((make) => app.route("/", make(services)));
   app.onError(handleError);

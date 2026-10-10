@@ -5,6 +5,7 @@ import { createCallRepo } from "./calls";
 import { createExperimentRepo } from "./experiments";
 import { createNotificationRepo } from "./notifications";
 import { createPreprodRepo } from "./preprod";
+import { createRolloutRepo } from "./rollouts";
 import { createRubricRepo } from "./rubric";
 import { createTrafficRepo } from "./traffic";
 import { createVersionRepo } from "./versions";
@@ -20,6 +21,7 @@ export function createRepos(make: CollectionFactory) {
     traffic: createTrafficRepo(make),
     notifications: createNotificationRepo(make),
     preprod: createPreprodRepo(make),
+    rollouts: createRolloutRepo(make),
   };
 }
 export type Repos = ReturnType<typeof createRepos>;
