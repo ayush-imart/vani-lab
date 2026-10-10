@@ -65,6 +65,20 @@ export const kpiScoresSchema = z.object({
   callbackRequested: score15,
 });
 export type KpiScores = z.infer<typeof kpiScoresSchema>;
+export const kpiWeightsSchema = z.object({
+  meetingFixed: z.number().min(0).max(1),
+  callDuration: z.number().min(0).max(1),
+  answerRate: z.number().min(0).max(1),
+  locationConfirmed: z.number().min(0).max(1),
+  callbackRequested: z.number().min(0).max(1),
+});
+export const kpiBreakdownSchema = z.object({
+  meetingFixed: z.object({ reason: z.string(), evidence: z.string().optional() }),
+  callDuration: z.object({ reason: z.string(), evidence: z.string().optional() }),
+  answerRate: z.object({ reason: z.string(), evidence: z.string().optional() }),
+  locationConfirmed: z.object({ reason: z.string(), evidence: z.string().optional() }),
+  callbackRequested: z.object({ reason: z.string(), evidence: z.string().optional() }),
+});
 
 export const auditStatusSchema = z.enum(["running", "done", "error", "cancelled"]);
 export const auditRecordSchema = z.object({
@@ -75,6 +89,8 @@ export const auditRecordSchema = z.object({
   durationSec: z.number(),
   answered: z.boolean(),
   kpis: kpiScoresSchema.optional(),
+  kpiBreakdown: kpiBreakdownSchema.optional(),
+  weights: kpiWeightsSchema.optional(),
   overall: score15.optional(),
   guardrails: z.array(guardrailResultSchema).optional(),
   guardrailsPassed: z.boolean().optional(),
@@ -98,6 +114,10 @@ export const auditEventSchema = z.discriminatedUnion("type", [
     overall: score15,
     kpis: kpiScoresSchema,
     guardrailsPassed: z.boolean(),
+    kpiBreakdown: kpiBreakdownSchema.optional(),
+    weights: kpiWeightsSchema.optional(),
+    guardrails: z.array(guardrailResultSchema).optional(),
+    notes: z.string().optional(),
   }),
   z.object({ type: z.literal("error"), message: z.string() }),
 ]);

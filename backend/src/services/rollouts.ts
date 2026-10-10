@@ -13,6 +13,10 @@ import { buildEvidence } from "./rollout-evidence";
 import { decide, nextGateText, rampStages, type PolicyDecision, type PolicyRun } from "./rollout-policy";
 import type { ExperimentService } from "./experiments";
 import type { VersionService } from "./versions";
+import type { PreprodService } from "./preprod";
+
+// Pre-prod gate lookup for the challenger version (services/preprod.ts gate()).
+export type PreprodGatePort = Pick<PreprodService, "gate">;
 
 const iso = (ms: number) => new Date(ms).toISOString();
 const ms = (s: string) => Date.parse(s);
@@ -41,6 +45,7 @@ export function createRolloutService(
   experiments: ExperimentService,
   versions: VersionService,
   notifications: NotificationService,
+  preprod: PreprodGatePort,
 ) {
   let lock: Promise<unknown> = Promise.resolve();
   const exclusive = <T>(fn: () => Promise<T>): Promise<T> => {
@@ -132,29 +137,38 @@ export function createRolloutService(
       title: `Experiment ${run.experimentId}: ${d.action.replace("_", " ")}`,
       body: d.reason,
       version: run.challengerSlot as "A" | "B" | "C",
+      experimentId: run.experimentId,
     });
   };
 
-  const applyDecision = async (run: RolloutRunDoc, d: PolicyDecision, now: number): Promise<RolloutRunDoc> => {
-    const changedStage = d.toStagePct !== run.stagePct || d.toPhase !== run.phase;
-    const next: RolloutRunDoc = {
-      ...run,
-      status: d.toStatus,
-      phase: d.toPhase,
-      stagePct: d.toStagePct,
-      traffic: traffic(d.toStagePct),
-      frozen: d.freeze ?? (d.toStatus === "paused" ? true : run.frozen),
-      ...(d.verdict ? { verdict: d.verdict } : {}),
-      stageEnteredAt: changedStage ? iso(now) : run.stageEnteredAt,
-      lastChangeAt: changedStage || d.toStatus !== run.status ? iso(now) : run.lastChangeAt,
-      ...(d.toStatus === "completed" || d.toStatus === "rolled_back" || d.toStatus === "ended" ? { endedAt: iso(now) } : {}),
-      ...(d.action === "promote" && d.toPhase === "holdback"
-        ? { holdback: { startedAt: iso(now), liftAtPromotionPts: d.liftAtPromotionPts ?? null, alerted: false } }
-        : {}),
-      ...(d.action === "alert" && run.holdback ? { holdback: { ...run.holdback, alerted: true } } : {}),
-    };
-    return next;
-  };
+  const applyDecision = async (run: RolloutRunDoc, d: PolicyDecision, now: number): Promise<RolloutRunDoc> => applyPolicyDecision(run, d, now);
+
+  // Unlogged hold result for a non-running run (same shape as a logged decision, never persisted).
+  const holdView = (run: RolloutRunDoc, evidence: RolloutEvidenceDto, d: PolicyDecision, now: number): RolloutDecisionDto => ({
+    id: `hold_${run.experimentId}`,
+    experimentId: run.experimentId,
+    at: iso(now),
+    actor: "engine",
+    action: d.action,
+    trigger: d.trigger,
+    reason: d.reason,
+    phase: run.phase,
+    stage: run.stagePct,
+    fromStage: run.stagePct,
+    toStage: run.stagePct,
+    trafficBefore: traffic(run.stagePct),
+    trafficAfter: traffic(run.stagePct),
+    lambdaBenefit: evidence.primary.lambdaBenefit,
+    lambdaHarm: evidence.primary.lambdaHarm,
+    peakLambdaBenefit: evidence.primary.peakLambdaBenefit,
+    peakLambdaHarm: evidence.primary.peakLambdaHarm,
+    liftPts: evidence.primary.liftPts,
+    guardrailStatus: Object.fromEntries(evidence.guardrails.map((g) => [g.id, g.status])),
+    srmPValue: evidence.validity.srm.pValue,
+    coverage: evidence.validity.coverage.share,
+    method: evidence.primary.method,
+    evidence,
+  });
 
   return {
     // Serialised with tick/approve/rollback so two concurrent starts cannot both pass the 409 check.
@@ -162,10 +176,20 @@ export function createRolloutService(
       return exclusive(async () => {
       const exp = await experiments.get(experimentId);
       if (await repos.rollouts.getRun(experimentId)) throw conflict("This experiment already has a rollout run");
-      const { windowStart, windowEnd, channel, ...pm } = input;
+      const { windowStart, windowEnd, channel, allowSimulatedGate, ...pm } = input;
       const { settings, violations } = resolvePmSettings({ ...(Object.fromEntries(Object.entries(pm).filter(([, v]) => v !== undefined)) as Partial<PmSettings>), primary: pm.primary ?? primaryFrom(exp.primaryMetric) });
       if (violations.length > 0) throw badRequest("Settings violate the PM spec bounds", violations);
       const slots = await slotsOf(versions, exp.baselineVersionId, exp.challengerVersionId);
+      // Pre-prod gate: the challenger must pass before live traffic, unless the PM explicitly
+      // overrides it for a demo (recorded as "simulated" with the reason in the start decision).
+      const gate = await preprod.gate(exp.challengerVersionId);
+      const gatePassed = gate.status === "pass";
+      if (!gatePassed && allowSimulatedGate !== true) {
+        throw conflict(`Pre-prod gate for ${exp.challengerVersionId} is ${gate.status}; run pre-prod or set allowSimulatedGate for a demo`);
+      }
+      const gateNote = gatePassed
+        ? "pre-prod gate passed"
+        : `pre-prod gate ${gate.status}; PM override allowSimulatedGate (simulated gate)`;
       const startMs = windowStart ? ms(windowStart) : nowMs;
       if (Number.isNaN(startMs)) throw badRequest("windowStart is not a valid date");
       const scheduled = startMs > nowMs;
@@ -186,7 +210,7 @@ export function createRolloutService(
         traffic: traffic(settings.startPct),
         frozen: false,
         pmApproved: false,
-        preprodGate: "simulated",
+        preprodGate: gatePassed ? "pass" : "simulated",
         simulated: false,
         windowStart: startIso,
         ...(windowEnd ? { windowEnd } : {}),
@@ -199,7 +223,7 @@ export function createRolloutService(
       await repos.rollouts.saveRun(run);
       await setExperimentStatus(experimentId, run.status, startIso, windowEnd);
       const { evidence } = await evidenceOf(run, nowMs);
-      await record(run, evidence, { actor: "engine", action: "start", trigger: "started", reason: `Started at ${settings.startPct}% on ${run.primary}`, toStagePct: run.stagePct, toPhase: "ramp" }, nowMs, run.stagePct);
+      await record(run, evidence, { actor: "engine", action: "start", trigger: "started", reason: `Started at ${settings.startPct}% on ${run.primary}; ${gateNote}`, toStagePct: run.stagePct, toPhase: "ramp" }, nowMs, run.stagePct);
       return stripDoc(run);
       });
     },
@@ -219,6 +243,10 @@ export function createRolloutService(
           await setExperimentStatus(experimentId, "running");
         }
         const built = await evidenceOf(run, nowMs);
+        if (run.status !== "running") {
+          // Not running: report the hold without growing the decision log on every tick.
+          return holdView(run, built.evidence, decide(toPolicyRun(run), built.evidence, nowMs), nowMs);
+        }
         run = { ...run, peaks: built.peaks, watchSince: built.watchSince };
         const decision = decide(toPolicyRun(run), built.evidence, nowMs);
         const next = await applyDecision(run, decision, nowMs);
@@ -234,9 +262,27 @@ export function createRolloutService(
       return exclusive(async () => {
         const run = await getRun(experimentId);
         if (run.status !== "running") throw conflict(`Run is ${run.status}; nothing to approve`);
+        const finalStage = run.stages[run.stages.length - 1];
+        if (run.phase !== "ramp" || run.stagePct !== finalStage) {
+          throw conflict(`Approval is only allowed at the final stage (${finalStage}%); run is at ${run.stagePct}% (${run.phase})`);
+        }
         const next = await repos.rollouts.saveRun({ ...run, pmApproved: true });
         const { evidence } = await evidenceOf(next, nowMs);
-        await record(next, evidence, { actor: "pm", action: "approve", trigger: "pm_approval", reason: "PM approved the 50% to 100% step", toStagePct: next.stagePct, toPhase: next.phase }, nowMs, next.stagePct);
+        await record(next, evidence, { actor: "pm", action: "approve", trigger: "pm_approval", reason: `PM approved the ${finalStage}% to 100% step`, toStagePct: next.stagePct, toPhase: next.phase }, nowMs, next.stagePct);
+        return stripDoc(next);
+      });
+    },
+
+    // PM resumes a paused (frozen) run. Traffic stays at the stage in force; the freeze is lifted
+    // here and nowhere else (the engine never unfreezes on its own), and the action is logged as "pm".
+    resume(experimentId: string, nowMs: number = Date.now()): Promise<RolloutRunDto> {
+      return exclusive(async () => {
+        const run = await getRun(experimentId);
+        if (run.status !== "paused") throw conflict(`Run is ${run.status}; only a paused run can be resumed`);
+        const next = await repos.rollouts.saveRun({ ...run, status: "running", frozen: false, lastChangeAt: iso(nowMs) });
+        await setExperimentStatus(experimentId, "running");
+        const { evidence } = await evidenceOf(next, nowMs);
+        await record(next, evidence, { actor: "pm", action: "resume", trigger: "resumed", reason: `PM resumed the run at ${run.stagePct}%; traffic unfrozen`, toStagePct: next.stagePct, toPhase: next.phase }, nowMs, run.stagePct);
         return stripDoc(next);
       });
     },
@@ -271,7 +317,7 @@ export function createRolloutService(
         decisions,
         impact:
           hb !== null
-            ? { basis: "holdback_lift" as const, liftPts: hb, note: "Measured against the 5% holdback on the old prompt (unbiased by early stopping)." }
+            ? { basis: "holdback_lift" as const, liftPts: hb, note: "Measured against the 10% holdback on the old prompt (one GLID terminal-digit unit; unbiased by early stopping)." }
             : stopping !== null
               ? { basis: "stopping_lift" as const, liftPts: stopping, note: "Measured at the stopping point; likely overstated (winner's curse). Confirm with a holdback." }
               : { basis: "none" as const, liftPts: null, note: "Not enough judged calls yet." },
@@ -280,7 +326,7 @@ export function createRolloutService(
       };
     },
 
-    // Deterministic arm for a seller: last two GLID digits against the stage in force.
+    // Deterministic arm for a seller: the final GLID digit is one 10% unit.
     async assign(experimentId: string, glid: string) {
       const run = await getRun(experimentId);
       const bucket = bucketOf(glid);
@@ -311,12 +357,36 @@ export function createRolloutService(
       });
       await setExperimentStatus(experimentId, status);
       await record(next, evidence, { actor: "pm", action, trigger, reason, toStagePct: 0, toPhase: "done" }, nowMs, run.stagePct);
-      await notifications.notify({ kind: "rollback", title: `Experiment ${experimentId}: ${action}`, body: reason, version: run.challengerSlot as "A" | "B" | "C" });
+      await notifications.notify({ kind: "rollback", title: `Experiment ${experimentId}: ${action}`, body: reason, version: run.challengerSlot as "A" | "B" | "C", experimentId });
       return stripDoc(next);
     });
   }
 }
 export type RolloutService = ReturnType<typeof createRolloutService>;
+
+// Pure: the run after the policy decision (exported for unit tests).
+export function applyPolicyDecision(run: RolloutRunDoc, d: PolicyDecision, now: number): RolloutRunDoc {
+  const changedStage = d.toStagePct !== run.stagePct || d.toPhase !== run.phase;
+  const next: RolloutRunDoc = {
+    ...run,
+    status: d.toStatus,
+    phase: d.toPhase,
+    stagePct: d.toStagePct,
+    traffic: traffic(d.toStagePct),
+    frozen: d.freeze ?? (d.toStatus === "paused" ? true : run.frozen),
+    // Any step down invalidates an earlier PM approval for the final step.
+    pmApproved: d.action === "step_down" ? false : run.pmApproved,
+    ...(d.verdict ? { verdict: d.verdict } : {}),
+    stageEnteredAt: changedStage ? iso(now) : run.stageEnteredAt,
+    lastChangeAt: changedStage || d.toStatus !== run.status ? iso(now) : run.lastChangeAt,
+    ...(d.toStatus === "completed" || d.toStatus === "rolled_back" || d.toStatus === "ended" ? { endedAt: iso(now) } : {}),
+    ...(d.action === "promote" && d.toPhase === "holdback"
+      ? { holdback: { startedAt: iso(now), liftAtPromotionPts: d.liftAtPromotionPts ?? null, alerted: false } }
+      : {}),
+    ...(d.action === "alert" && run.holdback ? { holdback: { ...run.holdback, alerted: true } } : {}),
+  };
+  return next;
+}
 
 const stripDoc = ({ peaks: _p, watchSince: _w, ...run }: RolloutRunDoc): RolloutRunDto => run;
 

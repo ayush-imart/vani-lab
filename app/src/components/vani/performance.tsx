@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { ChipSelect } from "./chips";
 import { motion, useReducedMotion } from "motion/react";
 import { Link } from "@tanstack/react-router";
-import { ArrowDown, ArrowUp, ArrowUpDown, ArrowUpRight, Pause, Play, Star } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ArrowUpRight, FlaskConical, Pause, Play, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -19,17 +19,14 @@ import {
   LOWER_IS_BETTER,
   cohortBreakdown,
   compareVersions,
-  createInitialFeed,
-  createRng,
   cycleSort,
   kpiDefs,
   kpiUnit,
   leaderboard,
   metricDefs,
-  nextCall,
-  recordCall,
   sortLeaderboard,
   versionIds,
+  versionIds as allVersionIds,
   weakestCohorts,
   type CohortRecord,
   type KpiKey,
@@ -39,13 +36,16 @@ import {
 } from "./performance-data";
 import { AnimatedNumber, Crossfade } from "./motion-kit";
 import { useLiveFeed, type KpiTable } from "./performance-source";
+import { scopeIds, useScopedSlots } from "./use-scoped-slots";
+import { useExperimentId } from "@/lib/experiment-scope";
 
 const labelOf = (key: MetricKey) => metricDefs.find((m) => m.key === key)?.label ?? key;
 const shortOf = (key: MetricKey) => metricDefs.find((m) => m.key === key)?.short ?? key;
 const fmtNum = (key: KpiKey, n: number) =>
   `${key === "callDuration" ? Math.round(n) : n.toFixed(1)}${kpiUnit(key)}`;
 const kpiNumber = (kpis: KpiTable, id: VersionId, key: KpiKey) => (
-  <AnimatedNumber value={kpis[id][key]} format={(n) => fmtNum(key, n)} />
+  kpis[id][key] === null ? <span className="vd-nodata">No data</span> :
+    <AnimatedNumber value={kpis[id][key] as number} format={(n) => fmtNum(key, n)} />
 );
 
 function StarScore({ value, label }: { value: number; label: string }) {
@@ -69,15 +69,17 @@ function SortIcon({ sort, column }: { sort: SortState; column: MetricKey }) {
 }
 
 // Best version on a KPI by exact comparison (lower is better for call duration).
-function bestOn(kpis: KpiTable, key: KpiKey): VersionId {
+function bestOn(kpis: KpiTable, key: KpiKey, versions: readonly VersionId[]): VersionId {
   const lowerBetter = LOWER_IS_BETTER.includes(key);
-  return [...versionIds].sort(
+  return [...versions].sort(
     (a, b) => (kpis[a][key] - kpis[b][key]) * (lowerBetter ? 1 : -1),
   )[0] as VersionId;
 }
 
-function VerdictLine({ primary, kpis }: { primary: KpiKey; kpis: KpiTable }) {
-  const v = compareVersions("A", "B", primary, kpis);
+function VerdictLine({ primary, kpis, versions }: { primary: KpiKey; kpis: KpiTable; versions: VersionId[] }) {
+  if (versions.length < 2) return null;
+  const [baseline, challenger] = versions;
+  const v = compareVersions(baseline, challenger, primary, kpis);
   const list = (keys: KpiKey[]) => keys.map((k) => shortOf(k)).join(", ");
   const id = `${v.tie}-${v.leader}-${primary}-${v.weak.join(",")}`;
   const num = (version: VersionId) => (
@@ -88,7 +90,7 @@ function VerdictLine({ primary, kpis }: { primary: KpiKey; kpis: KpiTable }) {
       <Crossfade id={id}>
         <strong>
           {v.tie ? (
-            `A and B are level on ${labelOf(primary)}.`
+            `Versions ${baseline} and ${challenger} are level on ${labelOf(primary)}.`
           ) : (
             <>
               Version {v.leader} is performing better than {v.other} on {labelOf(primary)} (
@@ -212,12 +214,15 @@ export function Performance() {
   const [primary, setPrimary] = useState<KpiKey>("meetingFixed");
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
   const [detail, setDetail] = useState<VersionId | null>(null);
-  const { feed, kpis, mode } = useLiveFeed(isPaused);
+  const { feed, kpis, glidsByVersion, mode } = useLiveFeed(isPaused);
+  // Phase E3: only the selected experiment's versions (shadows the module-level list).
+  const experimentId = useExperimentId();
+  const versionIds = scopeIds(allVersionIds, useScopedSlots(), Boolean(experimentId));
 
-  const board = sortLeaderboard(leaderboard(feed), sort);
-  const weak = weakestCohorts(feed, "overall");
-  const secondary = kpiDefs.filter((m) => m.key !== primary);
-  const bestPrimary = bestOn(kpis, primary);
+  const board = sortLeaderboard(leaderboard(feed, versionIds), sort);
+  const weak = weakestCohorts(feed, "overall", 3, versionIds);
+  const bestPrimary = bestOn(kpis, primary, versionIds);
+  const hasCalls = feed.some((cohort) => cohort.calls > 0);
 
   if (mode === "probing") {
     return (
@@ -240,12 +245,33 @@ export function Performance() {
     );
   }
 
+  if (mode === "backend" && !hasCalls) {
+    return (
+      <>
+        <PageTitle
+          eyebrow="PERFORMANCE"
+          title="Performance from recorded calls"
+          description="Metrics and comparisons appear here after real calls have been audited."
+        />
+        <section className="experiment-empty performance-empty" aria-labelledby="performance-empty-title">
+          <span className="experiment-empty-icon"><FlaskConical size={21} /></span>
+          <div>
+            <span className="section-kicker">NO SCORED CALLS</span>
+            <h2 id="performance-empty-title">Waiting for scored calls</h2>
+            <p>The backend has call records, but no scored calls for this comparison yet.</p>
+          </div>
+          <Button asChild variant="outline"><Link to="/pipeline">Open call setup<ArrowUpRight /></Link></Button>
+        </section>
+      </>
+    );
+  }
+
   return (
     <>
       <PageTitle
         eyebrow="PERFORMANCE"
-        title="How every version is doing, live."
-        description="Your main number first, the rest on demand."
+        title="Performance from recorded calls"
+        description="Hover a version card to inspect recent rollout GLIDs, masked to their last five digits."
         action={
           <Button variant="outline" onClick={() => setIsPaused(!isPaused)}>
             {isPaused ? <Play /> : <Pause />}
@@ -253,7 +279,7 @@ export function Performance() {
           </Button>
         }
       />
-      <VerdictLine primary={primary} kpis={kpis} />
+      <VerdictLine primary={primary} kpis={kpis} versions={versionIds} />
       <section aria-labelledby="perf-primary-title" className="perf-primary">
         <div className="section-heading">
           <div className="section-kicker">
@@ -261,10 +287,10 @@ export function Performance() {
             <Pill>Primary</Pill>
             <Pill tone={isPaused ? "neutral" : "green"}>
               {!isPaused && <i className="live-dot" />}
-              {isPaused ? "Paused" : "Live"}
+            {isPaused ? "Paused" : "Refreshing"}
             </Pill>
             <Pill tone={mode === "backend" ? "green" : "amber"}>
-              {mode === "backend" ? "Live backend" : "Sample data"}
+              {mode === "backend" ? "Recorded data" : "Simulated demo data"}
             </Pill>
           </div>
           <ChipSelect
@@ -276,56 +302,39 @@ export function Performance() {
         </div>
         <div className="perf-big-grid">
           {versionIds.map((id) => (
-            <motion.button
-              type="button"
-              whileHover={{ y: -1 }}
-              whileTap={{ scale: 0.99 }}
-              transition={{ duration: 0.12 }}
-              className={`perf-big version-${id}`}
+            <Tip
               key={id}
-              data-best={id === bestPrimary}
-              aria-label={`Open details for Version ${id}`}
-              onClick={() => setDetail(id)}
+              label={
+                <div className="glid-tooltip">
+                  <strong>{mode === "simulated" ? "Sample rollout GLIDs" : "Recent rollout GLIDs"}</strong>
+                  <span>Masked to the last five digits</span>
+                  {glidsByVersion[id].length ? (
+                    <ul>{glidsByVersion[id].slice(0, 8).map((tail) => <li key={tail}>GLID …{tail}</li>)}</ul>
+                  ) : (
+                    <span>No rollout calls recorded yet</span>
+                  )}
+                </div>
+              }
             >
-              <div className="score-version">
-                <Avatar id={id} small />
-                <span>Version {id}</span>
-                {id === bestPrimary && <Pill tone="green">Best</Pill>}
-              </div>
-              <strong>{kpiNumber(kpis, id, primary)}</strong>
-            </motion.button>
+              <motion.button
+                type="button"
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.99 }}
+                transition={{ duration: 0.12 }}
+                className={`perf-big version-${id}`}
+                data-best={id === bestPrimary}
+                aria-label={`Version ${id}; hover to inspect masked rollout GLIDs; click for details`}
+                onClick={() => setDetail(id)}
+              >
+                <div className="score-version">
+                  <Avatar id={id} small />
+                  <span>Version {id}</span>
+                  {id === bestPrimary && <Pill tone="green">Best</Pill>}
+                </div>
+                <strong>{kpiNumber(kpis, id, primary)}</strong>
+              </motion.button>
+            </Tip>
           ))}
-        </div>
-      </section>
-      <section aria-labelledby="perf-secondary-title" className="perf-secondary">
-        <h2 id="perf-secondary-title">Other KPIs</h2>
-        <div className="score-scroll">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>KPI</th>
-                {versionIds.map((id) => (
-                  <th key={id}>Version {id}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {secondary.map((m) => {
-                const key = m.key as KpiKey;
-                const best = bestOn(kpis, key);
-                return (
-                  <tr key={m.key}>
-                    <td>{m.label}</td>
-                    {versionIds.map((id) => (
-                      <td key={id} className={id === best ? "positive" : ""}>
-                        {kpiNumber(kpis, id, key)}
-                      </td>
-                    ))}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
         </div>
       </section>
       <div className="perf-insight">
@@ -442,7 +451,7 @@ export function Performance() {
           </table>
         </div>
         <div className="table-footer">
-          <span>Star mapping and weights are product placeholders. Synthetic data.</span>
+          <span>Comparisons use recorded calls. No result is shown before data is available.</span>
         </div>
       </section>
       <VersionDetail id={detail} feed={feed} kpis={kpis} onClose={() => setDetail(null)} />

@@ -1,6 +1,16 @@
 # Task list
 
-> **Next agenda (2026-10-10):** align the frontend to the PM spec [docs/pm-guardrails-and-autoscale-spec.md](../../docs/pm-guardrails-and-autoscale-spec.md) and fix the end-to-end flow gaps. Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked.
+## Current priority queue (2026-10-10)
+1. **GLID allocation unit consistency:** one terminal digit is exactly one 10% unit. Replace last-two-digit/range labels, 5–25% start sizes, 25/50 stages, and 5% holdback with final-digit assignment and 10-point steps. This explicit user correction overrides the imported PM spec; backend and frontend updates are in progress.
+2. **Experiment picker/deep links:** `/?exp=<id>` must open a matching experiment and preserve its search on redirect. Local `/experiments` is empty and Chrome shows API unavailable; deployed API lists one draft (`exp_8e879764-61a`). The Sandeep screen has separate hardcoded sample rows; do not present them as live picker records.
+3. **Scale-up cleanup:** remove “Your segment map” and the “Scale to a new segment” button/dialog; remove the requested staged-rollout/primary-metric UI from this page; keep the existing populated Autoscale content; risk/threshold setup-only.
+4. **Week-on-Week:** now copied from SCM `origin/ayush-dev` commit `03da628` to match Sandeep's screen. Preserve its layout/data structure and explicit sample-data label.
+5. **Setup / Performance:** restore the visible control-vs-challenger split; verify two-version maximum; add the model-based pending-days table above Leaderboard, masked rollout GLID hover details, and experiment-scoped demo rows.
+6. **Release:** build the current intended app/backend and promote through production after the edits settle.
+
+The repository-level queue and current data evidence are tracked in [`../../project_progress/TASK_LIST.md`](../../project_progress/TASK_LIST.md) and [`../../project_progress/PROGRESS_LOG_2026-10-10.md`](../../project_progress/PROGRESS_LOG_2026-10-10.md).
+
+> **Next agenda (2026-10-10):** align the frontend to the PM spec plus the user's final-digit/10% allocation correction [docs/pm-guardrails-and-autoscale-spec.md](../../docs/pm-guardrails-and-autoscale-spec.md) and fix end-to-end flow gaps. Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked.
 
 ## NEXT AGENDA — PM spec alignment (UI)
 
@@ -8,7 +18,7 @@
 - [ ] **F-A1. Primary metric selector** — the four PM options (Meeting Fixed default, Positive outcome, Conversation reach, Callback fixed) with the per-primary extra guardrail explained; persist it with the experiment.
 - [ ] **F-A2. Secondary metrics panel** — show the per-primary secondary metrics with baselines (31.0%, 2.1%, 11.8%, 15.4%, 47.6%, …); reported with significance, never promote/block.
 - [ ] **F-A3. Persist the experiment config.** Extend the `POST /experiments` body + `createExperimentSchema` with `trafficSplit`, `window {start,end}`, `secondaryMetric`; stop swallowing the POST error.
-- [ ] **F-A4. Start size 5–25% (default 10%)**, smallest-win input 1–5 pts (default 3), max test length (default 7 days); stricter-only inputs.
+- [~] **F-A4. Start size is a multiple of 10% (default 10%)** to match one terminal GLID digit per 10% unit; smallest-win and max-test-length controls remain per the spec. Remove 5/15/25% choices.
 
 ### Guardrails & rollout
 - [ ] **F-A5. Guardrail panel** — show all 9 guardrails (baseline, tolerance, live rule) and their live status (ok / watch / proven worse → rolled back).

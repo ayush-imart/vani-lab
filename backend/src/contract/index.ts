@@ -59,6 +59,20 @@ export const kpiScoresSchema = z.object({
   callbackRequested: score15,
 });
 export type KpiScores = z.infer<typeof kpiScoresSchema>;
+export const kpiWeightsSchema = z.object({
+  meetingFixed: z.number().min(0).max(1),
+  callDuration: z.number().min(0).max(1),
+  answerRate: z.number().min(0).max(1),
+  locationConfirmed: z.number().min(0).max(1),
+  callbackRequested: z.number().min(0).max(1),
+});
+export const kpiBreakdownSchema = z.object({
+  meetingFixed: z.object({ reason: z.string(), evidence: z.string().optional() }),
+  callDuration: z.object({ reason: z.string(), evidence: z.string().optional() }),
+  answerRate: z.object({ reason: z.string(), evidence: z.string().optional() }),
+  locationConfirmed: z.object({ reason: z.string(), evidence: z.string().optional() }),
+  callbackRequested: z.object({ reason: z.string(), evidence: z.string().optional() }),
+});
 
 export const auditStatusSchema = z.enum(["running", "done", "error", "cancelled"]);
 export const auditRecordSchema = z.object({
@@ -69,6 +83,8 @@ export const auditRecordSchema = z.object({
   durationSec: z.number(),
   answered: z.boolean(),
   kpis: kpiScoresSchema.optional(),
+  kpiBreakdown: kpiBreakdownSchema.optional(),
+  weights: kpiWeightsSchema.optional(),
   overall: score15.optional(),
   guardrails: z.array(guardrailResultSchema).optional(),
   guardrailsPassed: z.boolean().optional(),
@@ -92,6 +108,10 @@ export const auditEventSchema = z.discriminatedUnion("type", [
     overall: score15,
     kpis: kpiScoresSchema,
     guardrailsPassed: z.boolean(),
+    kpiBreakdown: kpiBreakdownSchema.optional(),
+    weights: kpiWeightsSchema.optional(),
+    guardrails: z.array(guardrailResultSchema).optional(),
+    notes: z.string().optional(),
   }),
   z.object({ type: z.literal("error"), message: z.string() }),
 ]);
@@ -148,19 +168,39 @@ export type VersionRecord = z.infer<typeof versionRecordSchema>;
 
 // ---- experiments ----
 // primaryMetric: one of the four spec primaries (meetingFixed is also the legacy KPI key), or a legacy rubric KPI/overall.
+export const MAX_EXPERIMENT_VERSIONS = 2;
 export const experimentPrimarySchema = z.enum([...metricKeys, "positiveOutcome", "conversationReach", "callbackFixed"]);
-export const createExperimentSchema = z.object({
+const createExperimentBaseSchema = z.object({
   name: z.string().min(1).max(120),
   goal: z.string().min(1).max(1000),
   primaryMetric: experimentPrimarySchema,
   guardrails: z.array(z.string().min(1)).default([]),
   baselineVersionId: z.string(),
   challengerVersionId: z.string(),
+  // Phase E: risk appetite is stored per experiment. Only presets that stay inside the spec's
+  // "stricter only" bounds exist (Fast is roadmap in the spec, so it is not offered).
+  riskAppetite: z.enum(["cautious", "standard"]).default("standard"),
+  // Start size is expressed in 10% terminal-digit units (GLIDs ending 0 through n-1).
+  startPct: z.number().int().min(10).max(80).multipleOf(10).default(10),
 });
-export const experimentSchema = createExperimentSchema.extend({
+export const createExperimentSchema = createExperimentBaseSchema.refine(
+  ({ baselineVersionId, challengerVersionId }) =>
+    new Set([baselineVersionId, challengerVersionId]).size === MAX_EXPERIMENT_VERSIONS,
+  "An experiment must compare exactly two different versions",
+);
+// Distinct from the legacy autoscale riskAppetiteSchema (conservative/moderate/fast) below.
+export const experimentRiskSchema = z.enum(["cautious", "standard"]);
+export type ExperimentRisk = z.infer<typeof experimentRiskSchema>;
+export const updateVersionSchema = z
+  .object({ label: z.string().min(1).max(80), changelog: z.string().min(1).max(2000) })
+  .partial()
+  .refine((v) => v.label !== undefined || v.changelog !== undefined, "Nothing to update");
+export const experimentSchema = createExperimentBaseSchema.extend({
   id: z.string(),
   // draft -> scheduled/running (start) -> paused (stop/SRM) -> completed | rolled_back | ended
   status: z.enum(["draft", "scheduled", "running", "paused", "completed", "rolled_back", "ended"]),
+  riskAppetite: experimentRiskSchema.optional(), // absent on experiments created before Phase E = standard
+  startPct: z.number().optional(), // absent = spec default (10)
   windowStart: isoDate.optional(), // experiment window, set by start
   windowEnd: isoDate.optional(),
   createdAt: isoDate,
@@ -202,7 +242,7 @@ export const callRecordSchema = z.object({
   channel: channelSchema.optional(),
   failed: z.boolean().optional(),
   evaluator: callEvaluatorSchema.optional(),
-  bucket: z.number().int().min(0).max(99).optional(), // last two GLID digits (00-99), the assignment unit
+  bucket: z.number().int().min(0).max(9).optional(), // final GLID digit (0-9), one 10% assignment unit
   experimentId: z.string().optional(), // set when the call belongs to a running experiment
   stage: z.number().optional(), // treatment traffic % in force when the call was recorded
 });
@@ -318,6 +358,7 @@ export const notificationSchema = z.object({
   title: z.string(),
   body: z.string(),
   version: versionSlotSchema.optional(),
+  experimentId: z.string().optional(), // set when the notification belongs to one experiment
   read: z.boolean(),
   createdAt: isoDate,
 });

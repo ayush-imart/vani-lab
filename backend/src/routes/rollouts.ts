@@ -8,7 +8,7 @@ import {
 import { badRequest } from "../lib/errors";
 import { parseBody, parseQuery } from "../lib/http";
 import { specSnapshot } from "../spec";
-import { balanceCheck, bucketOf, treatmentBuckets } from "../services/assignment";
+import { armFor, balanceCheck, bucketOf, treatmentBuckets } from "../services/assignment";
 import { runSimulation } from "../services/rollout-sim";
 import type { RolloutService } from "../services/rollouts";
 
@@ -33,6 +33,7 @@ export const rolloutRoutes = (rollouts: RolloutService): Hono =>
     .get("/experiments/:id/rollout", async (c) => c.json(await rollouts.state(c.req.param("id"))))
     .post("/experiments/:id/rollout/tick", async (c) => c.json(await rollouts.tick(c.req.param("id"))))
     .post("/experiments/:id/rollout/approve", async (c) => c.json(await rollouts.approve(c.req.param("id"))))
+    .post("/experiments/:id/rollout/resume", async (c) => c.json(await rollouts.resume(c.req.param("id"))))
     .post("/experiments/:id/rollout/rollback", async (c) => c.json(await rollouts.rollback(c.req.param("id"))))
     .post("/experiments/:id/rollout/stop", async (c) => c.json(await rollouts.stop(c.req.param("id"))))
     .get("/experiments/:id/rollout/decisions", async (c) =>
@@ -46,7 +47,7 @@ export const rolloutRoutes = (rollouts: RolloutService): Hono =>
     .get("/assignment", (c) => {
       const { glid, pct } = parseQuery(c, assignmentQuerySchema);
       const bucket = bucketOf(glid);
-      return c.json({ bucket, treatmentPct: pct, arm: bucket < pct ? "treatment" : "control", treatmentBuckets: treatmentBuckets(pct) });
+      return c.json({ bucket, treatmentPct: pct, arm: armFor(bucket, pct), treatmentBuckets: treatmentBuckets(pct) });
     })
     .post("/assignment/balance", async (c) => {
       const body = await parseBody(c, balanceCheckRequestSchema);

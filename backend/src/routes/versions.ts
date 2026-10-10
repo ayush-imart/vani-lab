@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { createVersionSchema } from "../contract";
+import { createVersionSchema, updateVersionSchema } from "../contract";
 import { parseBody, parseQuery } from "../lib/http";
 import type { VersionService } from "../services/versions";
 
@@ -19,4 +19,8 @@ export const versionRoutes = (versions: VersionService): Hono =>
     .get("/versions/:id/history", async (c) =>
       c.json({ items: await versions.history(c.req.param("id")) }),
     )
-    .get("/versions/:id", async (c) => c.json(await versions.get(c.req.param("id"))));
+    .get("/versions/:id", async (c) => c.json(await versions.get(c.req.param("id"))))
+    .patch("/versions/:id", async (c) =>
+      c.json(await versions.update(c.req.param("id"), await parseBody(c, updateVersionSchema))),
+    )
+    .delete("/versions/:id", async (c) => c.json(await versions.remove(c.req.param("id"))));

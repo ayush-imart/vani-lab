@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "provider": "sarvam-voice-agents",
+  "syncMethod": "Sarvam Voice Agents MCP configure_agent, then commit an immutable version",
+  "status": "pending-provider-sync",
+  "sourceOfTruth": {
+    "prompts": "app/src/components/vani/data.ts#versionPrompts",
+    "reason": "The browser call selects an app ID only; it does not send prompt text to Sarvam."
+  },
+  "agents": {
+    "A": {
+      "appIdEnv": "SARVAM_APP_ID_A",
+      "name": "VANI Seller Meeting Assistant - Version A",
+      "promptExport": "versionPrompts.A",
+      "speaker": "Aparna - Support Agent",
+      "voiceControls": {
+        "model": "Bulbul V4",
+        "speakingSpeed": 1.15,
+        "pitch": 0,
+        "perLanguageVoices": false,
+        "startingLanguage": "Hindi"
+      },
+      "speakerStatus": "selected as the Hindi female support voice; verify against main_vani audio during follow-up"
+    },
+    "B": {
+      "appIdEnv": "SARVAM_APP_ID_B",
+      "name": "VANI Seller Meeting Assistant - Version B",
+      "promptExport": "versionPrompts.B",
+      "speaker": "Aparna - Support Agent",
+      "voiceControls": {
+        "model": "Bulbul V4",
+        "speakingSpeed": 1.15,
+        "pitch": 0,
+        "perLanguageVoices": false,
+        "startingLanguage": "Hindi"
+      },
+      "speakerStatus": "selected as the Hindi female support voice; verify against main_vani audio during follow-up"
+    },
+    "C": {
+      "appIdEnv": "SARVAM_APP_ID_C",
+      "name": "VANI Seller Meeting Assistant - Version C",
+      "promptExport": "versionPrompts.C",
+      "speaker": "Aparna - Support Agent",
+      "voiceControls": {
+        "model": "Bulbul V4",
+        "speakingSpeed": 1.15,
+        "pitch": 0,
+        "perLanguageVoices": false,
+        "startingLanguage": "Hindi"
+      },
+      "speakerStatus": "selected as the Hindi female support voice; verify against main_vani audio during follow-up"
+    }
+  }
+}

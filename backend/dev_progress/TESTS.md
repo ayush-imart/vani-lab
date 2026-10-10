@@ -44,3 +44,8 @@ Template: What was tested / How / Result / Follow-up needed. Only real results b
 - How: `npx tsc --noEmit` clean; `npx vitest run` 5 files, 35 tests pass (new `src/sprint2.test.ts`: gate pending -> pass with fake judge, fail with scripted judge reasons, real-run guards, audit creates masked score-only call and no raw GLID on the audit, session config has no secret, proxy adds X-API-Key and filters query/ids). Live curl on a temp server (port 8789, fake auditor): scenarios, run, gate, sessions (200 and 503), proxy 503 without key, audit -> call.
 - Result: pass.
 - Follow-up: G10 blocked (Docker daemon down). Sarvam proxy path/headers come from reading sarvam-conv-ai-sdk 0.0.42 source, never exercised against Sarvam. Real Eve pre-prod run not executed (budget kept: 1 of 5 LLM calls used).
+
+### 2026-10-10 rollout review fixes
+- What: pre-prod gate at start, ingest idempotency/404/stage stamping, resume, final-stage approve, step-down approval reset, quiet ticks, experiment-scoped performance reads.
+- How: new `src/rollout-fixes.http.test.ts`; existing `src/rollouts.http.test.ts` starts now send `allowSimulatedGate: true` (start without a passed gate is now 409 by spec). `npx vitest run` 13 files, 139 tests pass; `npx tsc --noEmit` clean for these files.
+- Result: pass.

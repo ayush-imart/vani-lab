@@ -204,19 +204,19 @@ export const STATS = {
 } as const;
 
 // ---- staged rollout ----
-export const STAGES = [10, 25, 50, 100] as const;
+export const STAGES = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
 export const ROLLOUT = {
-  startPct: { default: 10, min: 5, max: 25 },
+  startPct: { default: 10, min: 10, max: 80 },
   maxLengthDays: { default: 7, min: 1, max: 30 }, // spec fixes the default only; the bounds are engine choices
   requirePmApproval: { default: true },
   minStageHours: { default: 24 }, // PM may only lengthen
   cooldownHours: { default: 24 }, // PM may only lengthen
-  holdbackPct: { default: 5, min: 0, max: 10 },
+  holdbackPct: { default: 10, min: 0, max: 10 },
   holdbackDays: { default: 7, min: 3, max: 14 },
   gates: {
-    harmless: { minLiftPts: -1, guardrailsMustBeOk: true }, // launch stage -> next, up to the 10 -> 25 step
-    moderate: { atStage: 25, minLiftPts: 1, minLambda: 5 },
-    final: { atStage: 50, minLambda: 20, minLiftPts: "smallest win worth shipping" },
+    harmless: { minLiftPts: -1, guardrailsMustBeOk: true }, // launch stage -> next, 10 -> 20
+    moderate: { atStage: 20, minLiftPts: 1, minLambda: 5 },
+    final: { atStage: 90, minLambda: 20, minLiftPts: "smallest win worth shipping" },
   },
   scaleDown: {
     stepDownLiftPts: -1, // lift <= -1 pt with moderate evidence
@@ -234,12 +234,12 @@ export const ENGINE_GUARDS = {
   minCallsPerArmPerStage: 30, // a stage with fewer calls in either arm is not used (Gaussian approximation)
   assumptions: [
     "Normal approximation of the stage-stratified lift (inverse-variance combination); small arms are skipped.",
-    "SRM assumes answered-call volume per bucket is uniform across the 100 GLID buckets.",
+    "SRM assumes answered-call volume per bucket is uniform across the 10 final-digit GLID units.",
   ],
 } as const;
 
 export const ASSIGNMENT = {
-  buckets: 100, // last two GLID digits, 00-99
+  buckets: 10, // final GLID digit, 0-9; each digit is one 10% rollout unit
   balanceChecks: { leadTypeMinPValue: 0.01, firstCallShareMaxDiffPts: 2, placeholder: true },
 } as const;
 
@@ -311,8 +311,10 @@ export function resolvePmSettings(override: Partial<PmSettings> | undefined): {
   if (!PRIMARY_IDS.includes(settings.primary)) violations.push("primary must be one of the four primary metrics");
   inRange("smallestWinPts", settings.smallestWinPts, ...STATS.smallestWinPtsRange);
   inRange("startPct", settings.startPct, ROLLOUT.startPct.min, ROLLOUT.startPct.max);
+  if (settings.startPct % 10 !== 0) violations.push("startPct must be a multiple of 10");
   inRange("maxLengthDays", settings.maxLengthDays, ROLLOUT.maxLengthDays.min, ROLLOUT.maxLengthDays.max);
   inRange("holdbackPct", settings.holdbackPct, ROLLOUT.holdbackPct.min, ROLLOUT.holdbackPct.max);
+  if (settings.holdbackPct % 10 !== 0) violations.push("holdbackPct must be 0 or 10 so the preserved control cohort matches one GLID terminal-digit unit");
   inRange("holdbackDays", settings.holdbackDays, ROLLOUT.holdbackDays.min, ROLLOUT.holdbackDays.max);
   atLeast("minStageHours", settings.minStageHours, ROLLOUT.minStageHours.default, "longer only");
   atLeast("cooldownHours", settings.cooldownHours, ROLLOUT.cooldownHours.default, "longer only");

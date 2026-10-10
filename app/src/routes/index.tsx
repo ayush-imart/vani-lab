@@ -1,11 +1,12 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Performance } from "@/components/vani/performance";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { metadata } from "@/components/vani/data";
 export const Route = createFileRoute("/")({
   head: () =>
     metadata(
-      "Performance",
-      "Live performance of every VANI prompt version by seller cohort, with a ranked leaderboard.",
+      "Experiments",
+      "Every VANI prompt experiment with its status. Open one to scope the app to it.",
     ),
-  component: Performance,
+  beforeLoad: ({ location }) => {
+    throw redirect({ to: "/experiments", search: location.search as never });
+  },
 });

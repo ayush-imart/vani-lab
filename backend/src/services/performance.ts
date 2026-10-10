@@ -10,6 +10,7 @@ import type {
   VersionSlot,
 } from "../contract";
 import { kpiKeys } from "../contract";
+import { notFound } from "../lib/errors";
 import { newId } from "../lib/http";
 import type { Repos } from "../repos";
 import type { AutoscaleService } from "./autoscale";
@@ -65,18 +66,41 @@ export function versionMetricsOf(version: VersionSlot, calls: CallRecord[]): Ver
   };
 }
 
+// Ingest idempotency: a retry of the same call carries the same masked GLID tail, bucket, version,
+// client timestamp and experiment. Only explicit client timestamps dedupe (a server default "now"
+// is unique per request), so clients that retry must send `at`.
+const sameCall = (a: CallRecord, b: CallRecord): boolean =>
+  a.source === "ingest" && a.glidLast5 === b.glidLast5 && a.bucket === b.bucket && a.version === b.version &&
+  a.at === b.at && (a.experimentId ?? null) === (b.experimentId ?? null);
+
+// Stage is stamped only while the run actually serves traffic at that stage.
+const STAMPED_STATUSES = new Set(["running", "paused"]);
+
+export type IngestResult = { record: CallRecord; duplicate: boolean };
+
 export function createPerformanceService(
   repos: Repos,
   rubricSvc: RubricService,
   autoscale: AutoscaleService,
 ) {
   const byVersion = (calls: CallRecord[], v: VersionSlot) => calls.filter((c) => c.version === v);
+  // Optional experiment scope for the read endpoints; unknown ids are a 404, not an empty list.
+  const scopedCalls = async (experimentId?: string): Promise<CallRecord[]> => {
+    const calls = await repos.calls.list();
+    if (experimentId === undefined) return calls;
+    if (!(await repos.experiments.get(experimentId))) throw notFound("Experiment");
+    return calls.filter((c) => c.experimentId === experimentId);
+  };
 
   return {
-    async ingest(input: CallIngest): Promise<CallRecord> {
+    async ingest(input: CallIngest): Promise<IngestResult> {
       const rubric = await rubricSvc.get();
       const { glidLast5, cohort } = maskGlid(input.glid);
+      if (input.experimentId !== undefined && !(await repos.experiments.get(input.experimentId))) {
+        throw notFound("Experiment");
+      }
       const run = input.experimentId ? await repos.rollouts.getRun(input.experimentId) : undefined;
+      const stamped = run && STAMPED_STATUSES.has(run.status);
       const record: CallRecord = {
         id: newId("call"),
         glidLast5,
@@ -90,14 +114,19 @@ export function createPerformanceService(
         ...(input.channel ? { channel: input.channel } : {}),
         ...(input.failed ? { failed: true } : {}),
         ...(input.evaluator ? { evaluator: input.evaluator } : {}),
-        ...(run ? { experimentId: run.experimentId, stage: run.stagePct } : {}),
+        ...(input.experimentId ? { experimentId: input.experimentId } : {}),
+        ...(stamped ? { stage: run.stagePct } : {}),
         ...(input.scores
           ? { scores: { ...input.scores, overall: overallFor(input.scores, rubric) } }
           : {}),
       };
+      if (input.at !== undefined) {
+        const existing = (await repos.calls.list()).find((c) => sameCall(c, record));
+        if (existing) return { record: existing, duplicate: true };
+      }
       await repos.calls.add(record);
       await autoscale.recordOutcome(input.version, 1, input.outcome.meetingFixed ? 1 : 0);
-      return record;
+      return { record, duplicate: false };
     },
 
     // Called when an audit completes: stores a score-only call (no boolean outcome, so no autoscale
@@ -121,18 +150,18 @@ export function createPerformanceService(
       });
     },
 
-    async recent(limit: number, since?: number): Promise<CallRecord[]> {
-      const all = (await repos.calls.list()).filter((c) => since === undefined || c.at > since);
+    async recent(limit: number, since?: number, experimentId?: string): Promise<CallRecord[]> {
+      const all = (await scopedCalls(experimentId)).filter((c) => since === undefined || c.at > since);
       return all.sort((a, b) => b.at - a.at).slice(0, limit);
     },
 
-    async versionMetrics(): Promise<VersionMetrics[]> {
-      const calls = await repos.calls.list();
+    async versionMetrics(experimentId?: string): Promise<VersionMetrics[]> {
+      const calls = await scopedCalls(experimentId);
       return versionSlots.map((v) => versionMetricsOf(v, byVersion(calls, v)));
     },
 
-    async cohorts() {
-      const calls = await repos.calls.list();
+    async cohorts(experimentId?: string) {
+      const calls = await scopedCalls(experimentId);
       return Array.from({ length: COHORT_COUNT }, (_, digit) => {
         const inCohort = calls.filter((c) => c.cohort === digit);
         const perVersion: Partial<Record<VersionSlot, { calls: number; scores: Scores | null }>> = {};
@@ -149,8 +178,8 @@ export function createPerformanceService(
       });
     },
 
-    async leaderboard(sort: MetricKey, order: "asc" | "desc") {
-      const calls = await repos.calls.list();
+    async leaderboard(sort: MetricKey, order: "asc" | "desc", experimentId?: string) {
+      const calls = await scopedCalls(experimentId);
       const rows = versionSlots.map((v) => ({
         version: v,
         calls: byVersion(calls, v).length,

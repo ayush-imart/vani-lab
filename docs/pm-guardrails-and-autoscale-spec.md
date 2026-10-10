@@ -2,6 +2,10 @@
 
 Oct 9, 2026 · @Someone
 
+## User correction / implementation addendum (2026-10-10)
+
+The user clarified that one terminal GLID digit (0–9) is one indivisible 10% allocation unit across the website. This supersedes the imported spec's last-two-digit 1% buckets, 5–25% start choices, 25%/50% rollout stages, and 5% holdback. Implement stable assignment by final digit, start/stage choices in 10% increments, and preserve one 10% control unit during holdback. Keep statistical gates, guardrails, cooldown, and explicit approval behavior; update their thresholds for the 10-point stage sequence. See the current status in `project_progress/TASK_LIST.md` and `project_progress/PROGRESS_LOG_2026-10-10.md`.
+
 ## **Summary**
 
 This spec defines how Vani Lab judges a prompt change and when it moves traffic. It covers four things: the metrics, the pre-prod gate a change must pass before reaching real sellers, the live-test method, and the rules for scaling up and down.

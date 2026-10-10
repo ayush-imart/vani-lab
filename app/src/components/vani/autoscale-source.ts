@@ -115,6 +115,7 @@ async function backendView(): Promise<{ view: AutoscaleView; ids: string[] }> {
 export function useAutoscaleSource(
   settings: AutoscaleSettings,
   running: boolean,
+  simulateOutcomes: boolean,
   onRemoteSettings: (s: AutoscaleSettings) => void,
 ) {
   const [sim, setSim] = useState<AutoscaleState>(() => createAutoscaleState());
@@ -128,6 +129,8 @@ export function useAutoscaleSource(
   const seen = useRef<Set<string> | null>(null);
   const ticks = useRef(0);
   const pulled = useRef(false);
+  const inject = useRef(simulateOutcomes);
+  inject.current = simulateOutcomes;
 
   useEffect(() => {
     if (!running) return;
@@ -148,7 +151,8 @@ export function useAutoscaleSource(
         cfg.current = remoteSettings as AutoscaleSettings;
       }
       const current = await backendView();
-      await Promise.all(
+      // Synthetic outcomes are demo-only: they reach the backend only when explicitly enabled.
+      if (inject.current) await Promise.all(
         versionIds.map((id) => {
           const calls = Math.round(current.view.traffic[id] * CALLS_PER_TRAFFIC_POINT);
           if (calls === 0) return Promise.resolve();
@@ -204,7 +208,7 @@ export function useAutoscaleSource(
         riskAppetite: settings.riskAppetite,
         thresholdPct: settings.thresholdPct,
       },
-    }).catch(() => undefined);
+    }).catch(() => toast.error("Autoscale settings were not saved: backend rejected the update."));
   }, [mode, settings.autoscale, settings.riskAppetite, settings.thresholdPct]);
 
   const reset = () => {
@@ -212,7 +216,9 @@ export function useAutoscaleSource(
     simRef.current = createAutoscaleState();
     setSim(simRef.current);
     if (modeRef.current === "backend") {
-      void api("/traffic", { method: "PUT", body: INITIAL_TRAFFIC }).catch(() => undefined);
+      void api("/traffic", { method: "PUT", body: INITIAL_TRAFFIC }).catch(() =>
+        toast.error("Traffic reset failed: backend unreachable."),
+      );
     }
   };
 

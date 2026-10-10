@@ -1,6 +1,6 @@
-// Assignment by the last TWO GLID digits (bucket 00-99). Treatment at P% = buckets 00..P-1
-// (10% = 00-09, 25% = 00-24). The treatment set only grows as the rollout scales up, so a seller
-// who heard B keeps hearing B while traffic moves up.
+// Assignment by the final GLID digit (bucket 0-9). Each terminal digit is one 10% unit:
+// at 10% only GLIDs ending in 0 hear treatment; at 20%, endings 0 and 1 do. The treatment
+// set only grows as rollout advances, so a seller who heard B keeps hearing B.
 import { chiSquareSurvival } from "../stats/normal";
 import { ASSIGNMENT } from "../spec";
 
@@ -9,21 +9,21 @@ export const BUCKET_COUNT = ASSIGNMENT.buckets;
 export function bucketOf(glid: number | string): number {
   const digits = String(glid);
   if (!/^\d+$/.test(digits)) throw new RangeError("GLID must be digits only");
-  return Number(digits.padStart(2, "0").slice(-2));
+  return Number(digits.slice(-1));
 }
 
-export const isTreatmentBucket = (bucket: number, treatmentPct: number): boolean => bucket < treatmentPct;
+export const isTreatmentBucket = (bucket: number, treatmentPct: number): boolean => bucket < treatmentPct / 10;
 export const armFor = (bucket: number, treatmentPct: number): "treatment" | "control" =>
   isTreatmentBucket(bucket, treatmentPct) ? "treatment" : "control";
 
-// The buckets that hear the treatment at `treatmentPct` (e.g. 10 -> [0..9]).
+// The terminal-digit units that hear the treatment at `treatmentPct` (e.g. 20 -> [0, 1]).
 export const treatmentBuckets = (treatmentPct: number): number[] =>
   Array.from({ length: BUCKET_COUNT }, (_, b) => b).filter((b) => isTreatmentBucket(b, treatmentPct));
 
 export type BalanceSeller = { glid: number | string; leadType: string; firstCall: boolean };
 export type BalanceResult = {
   treatmentPct: number;
-  treatmentBuckets: string; // e.g. "00-09"
+  treatmentBuckets: string; // e.g. "0" at 10%, "0-1" at 20%
   nTreatment: number;
   nControl: number;
   leadType: { chiSquare: number; df: number; pValue: number | null; shares: Record<string, { treatment: number; control: number }> };
@@ -33,7 +33,7 @@ export type BalanceResult = {
   criteria: typeof ASSIGNMENT.balanceChecks;
 };
 
-const label = (n: number) => String(n).padStart(2, "0");
+const label = (n: number) => String(n);
 
 // Balance check at launch: the chosen buckets must look alike on lead type and first-call share.
 // Criteria are the (placeholder) ones in spec.ts: lead-type chi-square p >= 0.01, first-call share
@@ -79,7 +79,7 @@ export function balanceCheck(sellers: readonly BalanceSeller[], treatmentPct: nu
   }
   return {
     treatmentPct,
-    treatmentBuckets: treatmentPct > 0 ? `${label(0)}-${label(Math.min(99, Math.ceil(treatmentPct) - 1))}` : "none",
+    treatmentBuckets: treatmentPct > 0 ? (treatmentPct === 10 ? label(0) : `${label(0)}-${label(Math.min(9, treatmentPct / 10 - 1))}`) : "none",
     nTreatment: treatment.length,
     nControl: control.length,
     leadType: { chiSquare, df, pValue, shares },

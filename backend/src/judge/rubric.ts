@@ -19,6 +19,10 @@ export const defaultWeights: Record<KpiKey, number> = {
 };
 
 const score = z.number().int().min(1).max(5);
+const kpiRationale = z.object({
+  reason: z.string().min(1).max(500),
+  evidence: z.string().max(500).optional(),
+});
 
 export const judgeVerdictSchema = z.object({
   scores: z.object({
@@ -28,6 +32,13 @@ export const judgeVerdictSchema = z.object({
     locationConfirmed: score,
     callbackRequested: score,
   }),
+  breakdown: z.object({
+    meetingFixed: kpiRationale,
+    callDuration: kpiRationale,
+    answerRate: kpiRationale,
+    locationConfirmed: kpiRationale,
+    callbackRequested: kpiRationale,
+  }).optional(),
   guardrails: z.array(z.object({ name: z.string(), passed: z.boolean(), reason: z.string() })),
   notes: z.string().optional(),
 });

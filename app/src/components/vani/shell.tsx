@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Activity,
   FlaskConical,
   FileText,
   ChartNoAxesColumnIncreasing,
+  CalendarRange,
   Layers,
   Workflow,
   Bell,
@@ -18,6 +19,8 @@ import {
   Settings2,
   ShieldCheck,
   Plus,
+  LayoutList,
+  LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -27,11 +30,16 @@ import { PageTransition } from "./motion-kit";
 import { api, useBackendStatus } from "@/lib/api";
 import { notificationPrefsSchema } from "@/lib/api-contract";
 import { markAllRead, startNotificationSync, useNotifications } from "./notifications";
+import { ExperimentPicker } from "./experiment-picker";
+import { demoSignOut, isDemoSignedIn } from "@/lib/demo-auth";
+import { EXP_PARAM, syncExperimentFromUrl, useExperimentId } from "@/lib/experiment-scope";
 const nav = [
-  { label: "Performance", path: "/", icon: Activity },
+  { label: "Experiments", path: "/experiments", icon: LayoutList },
+  { label: "Performance", path: "/performance", icon: Activity },
   { label: "Experiment setup", path: "/setup", icon: FlaskConical },
   { label: "Prompts", path: "/prompts", icon: FileText },
   { label: "Scorecard", path: "/scorecard", icon: ChartNoAxesColumnIncreasing },
+  { label: "Week-on-week", path: "/week-on-week", icon: CalendarRange },
   { label: "Scale-up", path: "/scale-up", icon: Layers },
   { label: "Live pipeline", path: "/pipeline", icon: Workflow },
 ] as const;
@@ -84,6 +92,29 @@ function PrefsModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: b
 const COLLAPSE_KEY = "vani.sidebar.collapsed";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const path = useRouterState({ select: (s) => s.location.pathname });
+  if (path === "/login") return <>{children}</>;
+  return <WorkspaceShell path={path}>{children}</WorkspaceShell>;
+}
+
+function WorkspaceShell({ path, children }: { path: string; children: React.ReactNode }) {
+  const navigate = useNavigate();
+  // Demo-only gate: a missing local flag sends the visitor to /login (client side only).
+  useEffect(() => {
+    if (!isDemoSignedIn()) void navigate({ to: "/login" });
+  }, [navigate]);
+  const logout = () => {
+    demoSignOut();
+    void navigate({ to: "/login" });
+  };
+  const urlExp = useRouterState({
+    select: (s) => (s.location.search as Record<string, unknown>)[EXP_PARAM],
+  });
+  const experimentId = useExperimentId();
+  // URL wins; localStorage is the fallback when the URL has no ?exp=.
+  useEffect(() => {
+    syncExperimentFromUrl(urlExp);
+  }, [urlExp]);
+  const navSearch = experimentId ? { [EXP_PARAM]: experimentId } : {};
   const [collapsed, setCollapsedState] = useState(false);
   // Restore after hydration (avoids an SSR mismatch); storage can throw in private windows.
   useEffect(() => {
@@ -148,7 +179,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               className={`nav-item ${path === n.path ? "active" : ""}`}
               aria-label={n.label}
             >
-              <Link to={n.path}>
+              <Link to={n.path} search={navSearch as never}>
                 <n.icon size={18} />
                 <span className="fade-collapse">{n.label}</span>
                 {path === n.path && <span className="nav-dot fade-collapse" />}
@@ -178,19 +209,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
       <div className="app-main">
         <header className="topbar">
-          <Pill tone="green">
-            <i className="live-dot" />
-            Live
-          </Pill>
+          <ExperimentPicker />
           {backend === "online" ? (
-            <Pill tone="green">Live backend</Pill>
+            <Pill tone="green">API connected</Pill>
           ) : (
             <Pill tone="amber">
-              {backend === "offline" ? "Backend unreachable: synthetic data" : "Synthetic data"}
+              {backend === "offline" ? "API unavailable" : "Connecting"}
             </Pill>
           )}
           <div className="topbar-right">
-            {backend !== "online" && <span className="sample-label">Synthetic data</span>}
             <Tip label="Notifications">
               <Button
                 variant="ghost"
@@ -289,6 +316,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <Settings2 />
                   Notification preferences
                 </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setUser(false);
+                    logout();
+                  }}
+                >
+                  <LogOut />
+                  Logout
+                </Button>
               </motion.div>
             )}
           </AnimatePresence>
@@ -298,7 +335,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </main>
         <footer className="app-footer">
           <span>
-            <ShieldCheck size={13} /> Synthetic data only. No live calls are placed.
+            <ShieldCheck size={13} /> Call results appear here after they are recorded and audited.
           </span>
           <span>
             VANI Lab <span className="footer-dot">·</span> IndiaMART Voice AI

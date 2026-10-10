@@ -16,6 +16,10 @@ export async function verdictFor(
       lastProblem = parsed.error.issues.map((i) => i.path.join(".")).join(", ");
       continue;
     }
+    if (input.requireKpiBreakdown && !parsed.data.breakdown) {
+      lastProblem = "missing KPI breakdown";
+      continue;
+    }
     const names = new Set(parsed.data.guardrails.map((g) => g.name));
     const missing = input.guardrails.filter((g) => !names.has(g));
     if (missing.length > 0) {

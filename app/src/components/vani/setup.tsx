@@ -19,9 +19,11 @@ import { DiffView, DiffCounts } from "./diff";
 import { toast } from "sonner";
 import { FadeIn, Reveal } from "./motion-kit";
 import { PreprodGatePanel } from "./preprod";
-import { api } from "@/lib/api";
+import { RolloutPlan, RISK_LABEL, bucketLabel, useVersionLibrary } from "./rollout-plan";
+import { useSelectExperiment } from "./experiment-picker";
+import { createAndStart, type ExperimentRisk } from "@/lib/experiments-api";
 
-const steps = ["Goal and change", "Pre-prod gate", "Live test", "Decision"];
+const steps = ["Goal and change", "Pre-prod gate", "Rollout plan", "Decision"];
 
 export function Setup() {
   const [step, setStep] = useState(0);
@@ -38,17 +40,23 @@ export function Setup() {
   const [why, setWhy] = useState(
     "A shorter opening and a direct meeting ask should lift Meeting Fixed.",
   );
-  const [traffic, setTraffic] = useState("40");
-  const [split, setSplit] = useState("50");
-  const [start, setStart] = useState("2026-10-08T10:00");
-  const [end, setEnd] = useState("2026-10-15T10:00");
+  const [startPct, setStartPct] = useState(10);
+  const [risk, setRisk] = useState<ExperimentRisk>("standard");
+  const [starting, setStarting] = useState(false);
+  const library = useVersionLibrary();
+  const selectExperiment = useSelectExperiment();
   const [error, setError] = useState("");
   const atRisk = guardrails[0];
   const basePrompt = versionPrompts[baseId] ?? "";
   const variant = drafts[challengerId] ?? "";
   const setVariant = (value: string) => setDrafts({ ...drafts, [challengerId]: value });
   const sameVersion = baseId === challengerId;
-  const versionName = (id: string) => versions.find((v) => v.id === id)?.name ?? id;
+  const versionName = (id: string) =>
+    library.find((v) => v.id === id)?.label ?? versions.find((v) => v.id === id)?.name ?? id;
+  const versionOptions =
+    library.length > 0
+      ? library.map((v) => ({ value: v.id, label: v.slot ? `Version ${v.slot}` : v.label }))
+      : versions.map((v) => ({ value: v.id, label: `Version ${v.id}` }));
   const selectedGoal = goals.find((g) => g.id === goal);
 
   const advance = () => {
@@ -58,7 +66,7 @@ export function Setup() {
       if (goal === "custom" && (!customGoal.trim() || !examples.trim()))
         return setError("Define your custom goal and add 2-3 example calls.");
     }
-    if (step === 2 && end <= start) return setError("The end must be after the start.");
+    if (step === 0 && sameVersion) return setError("Pick two different versions.");
     setStep(step + 1);
   };
 
@@ -225,7 +233,7 @@ export function Setup() {
                     onChange={setBaseId}
                     ariaLabel="Baseline version"
                     disabled={locked}
-                    options={versions.map((v) => ({ value: v.id, label: `Version ${v.id}` }))}
+                    options={versionOptions}
                   />
                 </div>
                 <div>
@@ -235,7 +243,7 @@ export function Setup() {
                     onChange={setChallengerId}
                     ariaLabel="Challenger version"
                     disabled={locked}
-                    options={versions.map((v) => ({ value: v.id, label: `Version ${v.id}` }))}
+                    options={versionOptions}
                   />
                 </div>
               </div>
@@ -293,75 +301,15 @@ export function Setup() {
       )}
       {step === 2 && (
         <FadeIn>
-          <section className="setup-card">
-            <h2>Live test</h2>
-            <p className="helper">Keep traffic limited and the test window fixed.</p>
-            <div className="field-grid">
-              <div>
-                <label className="field-label">Eligible traffic</label>
-                <ChipSelect
-                  value={traffic}
-                  onChange={setTraffic}
-                  ariaLabel="Eligible traffic"
-                  disabled={locked}
-                  options={[
-                    { value: "20", label: "20% · GLID 0–1" },
-                    { value: "40", label: "40% · GLID 0–3" },
-                    { value: "60", label: "60% · GLID 0–5" },
-                  ]}
-                />
-              </div>
-              <div>
-                <label className="field-label">Baseline share</label>
-                <ChipSelect
-                  value={split}
-                  onChange={setSplit}
-                  ariaLabel="Baseline share"
-                  disabled={locked}
-                  options={[
-                    { value: "50", label: "50 / 50" },
-                    { value: "80", label: "80 / 20" },
-                  ]}
-                />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="start">
-                  Start
-                </label>
-                <input
-                  id="start"
-                  type="datetime-local"
-                  className="form-input"
-                  value={start}
-                  disabled={locked}
-                  onChange={(e) => setStart(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="end">
-                  End
-                </label>
-                <input
-                  id="end"
-                  type="datetime-local"
-                  className="form-input"
-                  value={end}
-                  disabled={locked}
-                  onChange={(e) => setEnd(e.target.value)}
-                />
-              </div>
-            </div>
-            <p className="field-help">
-              All times IST · each ending digit is approximately 10% of eligible traffic.
-            </p>
-            <div className="chip-strip">
-              <Info size={14} />
-              <span>
-                Traffic: simulated sellers (Sarvam) · {selectedGoal?.label ?? "Custom goal"} is the
-                primary metric
-              </span>
-            </div>
-          </section>
+          <RolloutPlan
+            startPct={startPct}
+            setStartPct={setStartPct}
+            risk={risk}
+            setRisk={setRisk}
+            baseId={baseId}
+            challengerId={challengerId}
+            locked={locked}
+          />
         </FadeIn>
       )}
       {step === 3 && (
@@ -373,10 +321,10 @@ export function Setup() {
               ["Experiment", name],
               ["Goal", goal === "custom" ? customGoal || "Custom goal" : primaryMetric],
               ["Change", `${versionName(challengerId)} vs ${versionName(baseId)}`],
-              ["Eligible traffic", `${traffic}% of calls · GLID ending digits`],
-              ["Split", `${split}% ${baseId} · ${100 - Number(split)}% ${challengerId}`],
-              ["Window", `${start.replace("T", " ")} → ${end.replace("T", " ")} IST`],
-              ["Decision method", "Pending product approval"],
+              ["Start size", `${startPct}% · ${bucketLabel(startPct)}`],
+              ["Split", `${startPct}% ${versionName(challengerId)} (${bucketLabel(startPct)}) · ${100 - startPct}% ${versionName(baseId)}`],
+              ["Risk appetite", RISK_LABEL[risk]],
+              ["Decision method", "Staged rollout engine (mSPRT gates, automatic scale-down)"],
             ].map(([label, value]) => (
               <div className="form-summary" key={label}>
                 <span>{label}</span>
@@ -407,7 +355,11 @@ export function Setup() {
           </Button>
           {step < 3 ? (
             <Button onClick={advance}>
-              Run pre-prod check
+              {step === 0
+                ? "Continue to pre-prod gate"
+                : step === 1
+                  ? "Proceed to rollout plan"
+                  : "Review decision"}
               <ArrowRight />
             </Button>
           ) : locked ? (
@@ -419,24 +371,33 @@ export function Setup() {
             </Button>
           ) : (
             <Button
+              disabled={starting}
               onClick={() => {
-                setLocked(true);
-                toast.success("Demo experiment started · definition locked");
-                void api("/experiments", {
-                  method: "POST",
-                  body: {
-                    name,
-                    goal: goal === "custom" ? customGoal || "Custom goal" : primaryMetric,
-                    primaryMetric: goal === "callback" ? "callbackRequested" : "meetingFixed",
-                    guardrails,
-                    baselineVersionId: baseId,
-                    challengerVersionId: challengerId,
-                  },
-                }).catch(() => undefined);
+                setStarting(true);
+                setError("");
+                createAndStart({
+                  name,
+                  goal: goal === "custom" ? customGoal || "Custom goal" : primaryMetric,
+                  primaryMetric: goal === "callback" ? "callbackRequested" : "meetingFixed",
+                  guardrails,
+                  baselineVersionId: baseId,
+                  challengerVersionId: challengerId,
+                  riskAppetite: risk,
+                  startPct,
+                })
+                  .then((exp) => {
+                    setLocked(true);
+                    toast.success(`Experiment started at ${startPct}% · definition locked`);
+                    selectExperiment(exp.id, "/performance");
+                  })
+                  .catch((e: unknown) =>
+                    setError(`Could not start: ${e instanceof Error ? e.message : "backend unreachable"}`),
+                  )
+                  .finally(() => setStarting(false));
               }}
             >
               <Lock />
-              Review and start
+              {starting ? "Starting…" : "Create and start"}
             </Button>
           )}
         </div>

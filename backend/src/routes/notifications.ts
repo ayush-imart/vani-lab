@@ -5,7 +5,7 @@ import type { NotificationService } from "../services/notifications";
 
 export const notificationRoutes = (n: NotificationService): Hono =>
   new Hono()
-    .get("/notifications", async (c) => c.json(await n.list()))
+    .get("/notifications", async (c) => c.json(await n.list(c.req.query("experimentId") || undefined)))
     .get("/notifications/preferences", async (c) => c.json(await n.getPrefs()))
     .put("/notifications/preferences", async (c) =>
       c.json(await n.savePrefs(await parseBody(c, notificationPrefsSchema))),

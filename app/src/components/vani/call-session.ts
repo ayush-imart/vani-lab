@@ -52,7 +52,7 @@ const CONNECT_TIMEOUT_S = 10;
 const MIC_ERRORS: Record<string, string> = {
   NotAllowedError:
     "Microphone access was blocked. Allow the microphone in the browser and try again.",
-  NotFoundError: "No microphone was found. Connect one and try again.",
+  NotFoundError: "", // deliberately silent: no mic notice on the live site
   NotReadableError: "The microphone is in use by another application.",
 };
 
@@ -62,7 +62,7 @@ export function friendlyError(error: unknown): string {
       ? String((error as { name: unknown }).name)
       : "";
   const known = MIC_ERRORS[name];
-  if (known) return known;
+  if (known !== undefined) return known;
   return error instanceof Error && error.message ? error.message : "The voice call failed.";
 }
 

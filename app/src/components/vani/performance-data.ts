@@ -187,8 +187,8 @@ export type LeaderRow = {
 };
 
 // Call-weighted mean across the version's cohorts; `cohorts` counts digits (0-9) it has served.
-export function leaderboard(feed: CohortRecord[]): LeaderRow[] {
-  const rows = versionIds.map((id) => {
+export function leaderboard(feed: CohortRecord[], versions: readonly VersionId[] = versionIds): LeaderRow[] {
+  const rows = versions.map((id) => {
     const served = feed.flatMap((c) =>
       c.byVersion[id] ? [c.byVersion[id] as VersionCohortStats] : [],
     );
@@ -223,10 +223,15 @@ export function sortLeaderboard(rows: LeaderRow[], sort: SortState): LeaderRow[]
 export type WeakCohort = { digit: number; label: string; mean: number; calls: number };
 
 // Lowest-scoring cohorts (by last digit) on a metric, averaged over every version they served.
-export function weakestCohorts(feed: CohortRecord[], metric: MetricKey, count = 3): WeakCohort[] {
+export function weakestCohorts(
+  feed: CohortRecord[],
+  metric: MetricKey,
+  count = 3,
+  versions: readonly VersionId[] = versionIds,
+): WeakCohort[] {
   return feed
     .flatMap((c) => {
-      const served = Object.values(c.byVersion) as VersionCohortStats[];
+      const served = versions.flatMap((id) => (c.byVersion[id] ? [c.byVersion[id]!] : []));
       const calls = served.reduce((s, x) => s + x.calls, 0);
       if (!calls) return [];
       const mean = served.reduce((s, x) => s + x.scores[metric] * x.calls, 0) / calls;

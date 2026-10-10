@@ -30,6 +30,7 @@ export function createNotificationService(repos: Repos, sender: NotificationSend
       title: string;
       body: string;
       version?: VersionSlot;
+      experimentId?: string;
     }): Promise<Notification> {
       const prefs = await getPrefs();
       const n: Notification = {
@@ -38,6 +39,7 @@ export function createNotificationService(repos: Repos, sender: NotificationSend
         title: input.title,
         body: input.body,
         ...(input.version ? { version: input.version } : {}),
+        ...(input.experimentId ? { experimentId: input.experimentId } : {}),
         read: !prefs.inApp, // in-app disabled: stored as already read
         createdAt: nowIso(),
       };
@@ -46,8 +48,10 @@ export function createNotificationService(repos: Repos, sender: NotificationSend
       return n;
     },
 
-    async list(): Promise<{ items: Notification[]; unread: number }> {
-      const items = (await repos.notifications.list()).reverse();
+    // experimentId set: only that experiment's notifications (exact match).
+    async list(experimentId?: string): Promise<{ items: Notification[]; unread: number }> {
+      const all = (await repos.notifications.list()).reverse();
+      const items = experimentId ? all.filter((n) => n.experimentId === experimentId) : all;
       return { items, unread: items.filter((n) => !n.read).length };
     },
 

@@ -38,7 +38,9 @@ export async function runSimulation(req: SimulationRequest) {
     get: async (id: string) => ({ id, slot: id === "v_control" ? req.controlSlot : req.challengerSlot }),
   } as unknown as VersionService;
   const notifications = { notify: async () => ({}) } as unknown as NotificationService;
-  const svc = createRolloutService(repos, experiments, versions, notifications);
+  // Synthetic runs model a challenger that already passed pre-prod.
+  const preprod = { gate: async (versionId: string) => ({ versionId, status: "pass" as const, checks: [] }) };
+  const svc = createRolloutService(repos, experiments, versions, notifications, preprod);
 
   const t0 = Date.UTC(2026, 9, 1);
   const rng = createRng(req.seed);
@@ -57,7 +59,7 @@ export async function runSimulation(req: SimulationRequest) {
     const run = (await svc.state(SIM_EXPERIMENT, now)).run;
     if (run.status !== "running") break;
     for (let i = 0; i < callsPerStep; i++) {
-      const bucket = counter++ % 100;
+      const bucket = counter++ % 10;
       const treated = armFor(bucket, run.stagePct) === "treatment";
       const drawn = drawCall(rng, treated ? treatmentProfile : controlProfile);
       await repos.calls.add({

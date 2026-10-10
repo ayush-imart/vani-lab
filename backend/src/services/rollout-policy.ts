@@ -68,7 +68,7 @@ export function stageBefore(run: Pick<PolicyRun, "stages" | "stagePct">): number
   return i > 0 ? run.stages[i - 1] : undefined;
 }
 
-// Ramp stages for a start size: the standard 10/25/50 above it, then the final step to 100.
+// Ramp through 10% units up to 90%; the final gated promotion goes to 100% before holdback.
 export const rampStages = (startPct: number): number[] => [startPct, ...STAGES.filter((s) => s > startPct && s < 100)];
 
 const holdOf = (run: PolicyRun, trigger: Trigger, reason: string): PolicyDecision => ({
@@ -205,7 +205,7 @@ export function decide(run: PolicyRun, ev: RolloutEvidenceDto, now: number): Pol
       reason: `${run.stagePct}% -> ${next}%: ${gate.description} (lift ${fmt(lift)} pts, Lambda ${fmt(ev.primary.peakLambdaBenefit, 1)})`,
     };
   }
-  // final gate: 50 -> 100
+  // Final gate: 90 -> 100 (then preserve one 10% terminal-digit unit as control).
   if (s.requirePmApproval && !run.pmApproved) {
     return holdOf(run, "awaiting_pm_approval", `Final gate met (lift ${fmt(lift)} pts, Lambda ${fmt(ev.primary.peakLambdaBenefit, 1)}); waiting for the PM approval click`);
   }

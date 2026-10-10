@@ -51,3 +51,7 @@ Template: What was tested / How / Result / Follow-up needed
 ### G21 real voice
 - Unit tests (`call-session.test.ts`, 7): state/role mapping, start + transcript mapping, audio level, 503 -> unavailable, mic errors, stop, mute/unmute. Real microphone/audio NOT tested.
 - Chrome: /pipeline call window shows no textbox; Start call with the backend returning 503 shows "Voice agent for Version B is not set up yet". Gates: tsc clean, vitest 44/44.
+
+### Impact analysis table headings
+- Fixed overlapping version headings by allowing wrapping, assigning room to metric and delta columns, and keeping a 520px minimum table width inside the horizontal scroll container.
+- Verification: whitespace check passed. TypeScript check reports existing undefined-index errors in `week-on-week.tsx:70-71`; browser layout not rechecked this round.

@@ -65,7 +65,7 @@ describe("rollout lifecycle over HTTP", () => {
     const env = makeEnv();
     const id = await newExperiment(env);
 
-    const started = await send(env, `/experiments/${id}/start`, "POST", {});
+    const started = await send(env, `/experiments/${id}/start`, "POST", { allowSimulatedGate: true });
     expect(started.status).toBe(201);
     const run = await body<{ status: string; stagePct: number; controlSlot: string; challengerSlot: string }>(started);
     expect(run).toMatchObject({ status: "running", stagePct: 10, controlSlot: "A", challengerSlot: "B" });
@@ -164,7 +164,7 @@ describe("rollout lifecycle over HTTP", () => {
   it("a split-ratio mismatch pauses and freezes the run (SRM)", async () => {
     const env = makeEnv();
     const id = await newExperiment(env);
-    await send(env, `/experiments/${id}/start`, "POST", {});
+    await send(env, `/experiments/${id}/start`, "POST", { allowSimulatedGate: true });
     // configured 10% treatment, observed 50%
     const rng = createRng(5);
     const prof = baselineProfile();
@@ -185,7 +185,7 @@ describe("rollout lifecycle over HTTP", () => {
   it("a clearly worse challenger is rolled back to 0% by the engine and marked losing", async () => {
     const env = makeEnv();
     const id = await newExperiment(env);
-    await send(env, `/experiments/${id}/start`, "POST", {});
+    await send(env, `/experiments/${id}/start`, "POST", { allowSimulatedGate: true });
     await seed(env, id, 10, 2000, 3.3, 18.3, 21);
     vi.setSystemTime(T0 + HOUR);
     const d = await body<{ action: string; trigger: string; toStage: number }>(await send(env, `/experiments/${id}/rollout/tick`));
@@ -197,7 +197,7 @@ describe("rollout lifecycle over HTTP", () => {
   it("stop ends the test, keeps control and marks it inconclusive", async () => {
     const env = makeEnv();
     const id = await newExperiment(env);
-    await send(env, `/experiments/${id}/start`, "POST", {});
+    await send(env, `/experiments/${id}/start`, "POST", { allowSimulatedGate: true });
     const res = await send(env, `/experiments/${id}/rollout/stop`);
     expect(await body(res)).toMatchObject({ status: "ended", stagePct: 0, verdict: "inconclusive" });
   });
@@ -205,7 +205,7 @@ describe("rollout lifecycle over HTTP", () => {
   it("a future windowStart leaves the run scheduled with no treatment traffic, then tick starts it", async () => {
     const env = makeEnv();
     const id = await newExperiment(env);
-    const res = await send(env, `/experiments/${id}/start`, "POST", { windowStart: new Date(T0 + 5 * HOUR).toISOString() });
+    const res = await send(env, `/experiments/${id}/start`, "POST", { allowSimulatedGate: true, windowStart: new Date(T0 + 5 * HOUR).toISOString() });
     expect(await body(res)).toMatchObject({ status: "scheduled" });
     expect((await body<{ arm: string }>(await get(env, `/experiments/${id}/assignment?glid=1234500`))).arm).toBe("control");
     vi.setSystemTime(T0 + 6 * HOUR);
@@ -216,7 +216,7 @@ describe("rollout lifecycle over HTTP", () => {
   it("concurrent ticks and starts are serialised (one run, no crash)", async () => {
     const env = makeEnv();
     const id = await newExperiment(env);
-    const starts = await Promise.all([send(env, `/experiments/${id}/start`, "POST", {}), send(env, `/experiments/${id}/start`, "POST", {})]);
+    const starts = await Promise.all([send(env, `/experiments/${id}/start`, "POST", { allowSimulatedGate: true }), send(env, `/experiments/${id}/start`, "POST", { allowSimulatedGate: true })]);
     expect(starts.map((r) => r.status).sort()).toEqual([201, 409]);
     const ticks = await Promise.all([1, 2, 3].map(() => send(env, `/experiments/${id}/rollout/tick`)));
     expect(ticks.every((r) => r.status === 200)).toBe(true);
@@ -245,8 +245,8 @@ describe("rollout error paths", () => {
   it("returns 409 on a second start and 409 on approve for a non-running run", async () => {
     const env = makeEnv();
     const id = await newExperiment(env);
-    expect((await send(env, `/experiments/${id}/start`, "POST", {})).status).toBe(201);
-    const dup = await send(env, `/experiments/${id}/start`, "POST", {});
+    expect((await send(env, `/experiments/${id}/start`, "POST", { allowSimulatedGate: true })).status).toBe(201);
+    const dup = await send(env, `/experiments/${id}/start`, "POST", { allowSimulatedGate: true });
     expect(dup.status).toBe(409);
     expect((await body<{ error: { code: string } }>(dup)).error.code).toBe("conflict");
     await send(env, `/experiments/${id}/rollout/stop`);
@@ -306,7 +306,7 @@ describe("assignment by the last two GLID digits", () => {
     const res = await get(env, "/assignment?glid=9876543210123");
     expect(await res.text()).not.toContain("9876543210123");
     const id = await newExperiment(env);
-    await send(env, `/experiments/${id}/start`, "POST", {});
+    await send(env, `/experiments/${id}/start`, "POST", { allowSimulatedGate: true });
     const res2 = await get(env, `/experiments/${id}/assignment?glid=9876543210123`);
     expect(await res2.text()).not.toContain("9876543210123");
   });
@@ -314,7 +314,7 @@ describe("assignment by the last two GLID digits", () => {
   it("serves the challenger to everyone once a run is completed at 100%", async () => {
     const env = makeEnv();
     const id = await newExperiment(env);
-    await send(env, `/experiments/${id}/start`, "POST", { holdbackPct: 0 });
+    await send(env, `/experiments/${id}/start`, "POST", { allowSimulatedGate: true, holdbackPct: 0 });
     const doc = await env.repos.rollouts.getRun(id);
     if (!doc) throw new Error("run missing");
     await env.repos.rollouts.saveRun({ ...doc, status: "completed", phase: "done", stagePct: 100 });
@@ -330,7 +330,7 @@ describe("ingest stamps experiment, stage and bucket", () => {
   it("stamps experimentId, stage in force and bucket; masks the GLID", async () => {
     const env = makeEnv();
     const id = await newExperiment(env);
-    await send(env, `/experiments/${id}/start`, "POST", {});
+    await send(env, `/experiments/${id}/start`, "POST", { allowSimulatedGate: true });
     const res = await send(env, "/calls", "POST", call("9876543210142", { experimentId: id, channel: "text" }));
     expect(res.status).toBe(201);
     const text = await res.text();

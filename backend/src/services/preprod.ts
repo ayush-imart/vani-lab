@@ -3,6 +3,7 @@ import { badRequest, notFound } from "../lib/errors";
 import { newId, nowIso } from "../lib/http";
 import { log } from "../lib/logger";
 import type { Repos } from "../repos";
+import { PREPROD } from "../spec";
 import type { AuditorPort } from "./auditor";
 import { verdictFor } from "./judge";
 import {
@@ -115,8 +116,9 @@ export function createPreprodService(repos: Repos, versions: VersionService, por
           const status: Status = !res ? "pending" : res.ok ? "pass" : "fail";
           return { scenarioId: s.id, status, severity: s.severity, ...(res ? { reason: res.reason } : {}) };
         });
-        // Minor failures are reported but do not block the check.
-        const blocking = scenarios.filter((s) => s.status === "fail" && s.severity !== "minor");
+        const blocking = scenarios.filter(
+          (s) => s.status === "fail" && (PREPROD.regressionZeroFailures || s.severity !== "minor"),
+        );
         const status: Status =
           blocking.length > 0 ? "fail" : scenarios.some((s) => s.status === "pending") ? "pending" : "pass";
         return {

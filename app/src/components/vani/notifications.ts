@@ -1,6 +1,7 @@
 // Tiny external store so any page can push an alert into the shell's notification panel.
 import { useSyncExternalStore } from "react";
 import { api } from "@/lib/api";
+import { getExperimentId, withExperiment } from "@/lib/experiment-scope";
 import { notificationSchema, type Notification } from "@/lib/api-contract";
 import { z } from "zod/v4";
 
@@ -14,29 +15,15 @@ export type AppNotification = {
   source: "system" | "autoscale";
 };
 
-const seed: AppNotification[] = [
-  ["Decision waiting for approval", "/scorecard"],
-  ["Version C flagged for review", "/scorecard"],
-  ["Pre-prod evaluations passed", "/pipeline"],
-  ["Test window ends in 5 days", "/scorecard"],
-].map(([title, to], i) => ({
-  id: -(i + 1),
-  title: title as string,
-  detail: "Sample alert",
-  to: to as string,
-  at: Date.UTC(2026, 9, 9, 8, 0, 0) - (i + 1) * 3_600_000,
-  unread: i < 3,
-  source: "system",
-}));
-
 const SYNC_MS = 8000;
 let local: AppNotification[] = [];
 let remote: AppNotification[] | null = null;
-let items: AppNotification[] = seed;
+let items: AppNotification[] = [];
+const EMPTY_NOTIFICATIONS: AppNotification[] = [];
 let nextId = 1;
 const listeners = new Set<() => void>();
 const recompute = () => {
-  items = [...local, ...(remote ?? seed)];
+  items = [...local, ...(remote ?? [])];
   listeners.forEach((l) => l());
 };
 
@@ -44,7 +31,7 @@ const fromBackend = (n: Notification): AppNotification => ({
   id: n.id,
   title: n.title,
   detail: n.body,
-  to: n.kind === "info" ? "/" : "/scale-up",
+  to: n.kind === "info" ? "/performance" : "/scale-up",
   at: Date.parse(n.createdAt) || Date.now(),
   unread: !n.read,
   source: n.kind === "info" ? "system" : "autoscale",
@@ -71,7 +58,9 @@ const listSchema = z.object({ items: z.array(notificationSchema) });
 
 async function syncOnce() {
   try {
-    const res = await api("/notifications", { schema: listSchema });
+    const res = await api(withExperiment("/notifications", getExperimentId()), {
+      schema: listSchema,
+    });
     remote = res.items.map(fromBackend);
   } catch {
     remote = null;
@@ -79,7 +68,7 @@ async function syncOnce() {
   recompute();
 }
 
-// Poll the backend; falls back to the seeded sample alerts when it is unreachable.
+// Poll the backend; unavailable notifications are omitted rather than replaced with sample alerts.
 export function startNotificationSync(): () => void {
   void syncOnce();
   const timer = setInterval(() => void syncOnce(), SYNC_MS);
@@ -95,5 +84,5 @@ export const useNotifications = () =>
   useSyncExternalStore(
     subscribe,
     () => items,
-    () => seed,
+    () => EMPTY_NOTIFICATIONS,
   );

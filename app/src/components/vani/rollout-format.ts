@@ -2,7 +2,7 @@
 import type { GuardrailStatus } from "@/lib/api-contract";
 
 export const NO_DATA = "No data";
-export const STAGES = [10, 25, 50, 100] as const;
+export const STAGES = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100] as const;
 
 export const fmtPct = (n: number | null | undefined, digits = 1) =>
   n === null || n === undefined ? NO_DATA : `${n.toFixed(digits)}%`;
@@ -55,7 +55,7 @@ export const SECONDARY_BY_PRIMARY: Record<string, string[]> = {
 export function availableActions(status: string, phase: string, stagePct: number, pmApproved: boolean) {
   const active = status === "running" || status === "paused";
   return {
-    approve: status === "running" && phase === "ramp" && stagePct === 50 && !pmApproved,
+    approve: status === "running" && phase === "ramp" && stagePct === 90 && !pmApproved,
     rollback: active || (status === "completed" && phase === "holdback"),
     stop: active,
     tick: status === "running",

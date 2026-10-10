@@ -19,12 +19,12 @@ export type GuardrailStatus = z.infer<typeof guardrailStatusSchema>;
 export const pmSettingsSchema = z.object({
   primary: primaryIdSchema,
   smallestWinPts: z.number(),
-  startPct: z.number(),
+  startPct: z.number().int().min(10).max(80).multipleOf(10),
   maxLengthDays: z.number(),
   requirePmApproval: z.boolean(),
   minStageHours: z.number(),
   cooldownHours: z.number(),
-  holdbackPct: z.number(),
+  holdbackPct: z.number().int().min(0).max(10).multipleOf(10),
   holdbackDays: z.number(),
   harmlessGateMinLiftPts: z.number(),
   moderateGateMinLiftPts: z.number(),
@@ -38,6 +38,8 @@ export const rolloutStartSchema = pmSettingsSchema.partial().extend({
   channel: channelSchema.optional(), // text (default) or voice; voice-only guardrails need voice
   windowStart: validDate.optional(), // default: now. A future start leaves the run "scheduled"
   windowEnd: validDate.optional(), // hard end of the experiment window
+  // Demo override: start although the challenger's pre-prod gate has not passed (recorded as "simulated").
+  allowSimulatedGate: z.boolean().optional(),
 });
 export type RolloutStart = z.infer<typeof rolloutStartSchema>;
 
@@ -190,8 +192,8 @@ export const rolloutRunSchema = z.object({
   controlSlot: slot,
   challengerSlot: slot,
   settings: pmSettingsSchema,
-  stages: z.array(z.number()), // ramp stages (treatment %)
-  stagePct: z.number(), // treatment % in force (holdback phase: 100 - holdbackPct)
+  stages: z.array(z.number().int().min(10).max(90).multipleOf(10)), // ramp stages; promotion advances to 100%
+  stagePct: z.number().int().min(0).max(100).multipleOf(10), // treatment %; includes 90% during 10% holdback
   traffic: z.object({ control: z.number(), treatment: z.number() }),
   frozen: z.boolean(),
   pmApproved: z.boolean(),
@@ -253,7 +255,7 @@ export const rolloutReportSchema = z.object({
 // ---- assignment ----
 export const assignmentQuerySchema = z.object({
   glid: z.string().regex(/^\d{1,20}$/),
-  pct: z.coerce.number().min(0).max(100).default(10),
+  pct: z.coerce.number().int().min(0).max(100).multipleOf(10).default(10),
 });
 export const balanceSellerSchema = z.object({
   glid: z.union([z.number().int().nonnegative(), z.string().regex(/^\d{1,20}$/)]),
@@ -261,7 +263,7 @@ export const balanceSellerSchema = z.object({
   firstCall: z.boolean(),
 });
 export const balanceCheckRequestSchema = z.object({
-  pct: z.number().min(1).max(100),
+  pct: z.number().int().min(10).max(100).multipleOf(10),
   sellers: z.array(balanceSellerSchema).min(2).max(100_000),
 });
 
@@ -275,7 +277,7 @@ export const simulationRequestSchema = z.object({
   days: z.number().int().min(1).max(30).default(7),
   evaluateEveryHours: z.number().min(1).max(24).default(12),
   primary: primaryIdSchema.optional(),
-  approveAtFinalGate: z.boolean().default(true), // simulate the PM approval click at 50 -> 100
+  approveAtFinalGate: z.boolean().default(true), // simulate PM approval for the final 90 -> 100 promotion
   controlSlot: slot.default("A"),
   challengerSlot: slot.default("B"),
   seed: z.number().int().default(1),

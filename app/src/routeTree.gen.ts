@@ -10,15 +10,34 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ExperimentsRouteImport } from './routes/experiments'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as PerformanceRouteImport } from './routes/performance'
 import { Route as PipelineRouteImport } from './routes/pipeline'
 import { Route as PromptsRouteImport } from './routes/prompts'
 import { Route as ScaleUpRouteImport } from './routes/scale-up'
 import { Route as ScorecardRouteImport } from './routes/scorecard'
 import { Route as SetupRouteImport } from './routes/setup'
+import { Route as WeekOnWeekRouteImport } from './routes/week-on-week'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExperimentsRoute = ExperimentsRouteImport.update({
+  id: '/experiments',
+  path: '/experiments',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PerformanceRoute = PerformanceRouteImport.update({
+  id: '/performance',
+  path: '/performance',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PipelineRoute = PipelineRouteImport.update({
@@ -46,55 +65,99 @@ const SetupRoute = SetupRouteImport.update({
   path: '/setup',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WeekOnWeekRoute = WeekOnWeekRouteImport.update({
+  id: '/week-on-week',
+  path: '/week-on-week',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/experiments': typeof ExperimentsRoute
+  '/login': typeof LoginRoute
+  '/performance': typeof PerformanceRoute
   '/pipeline': typeof PipelineRoute
   '/prompts': typeof PromptsRoute
   '/scale-up': typeof ScaleUpRoute
   '/scorecard': typeof ScorecardRoute
   '/setup': typeof SetupRoute
+  '/week-on-week': typeof WeekOnWeekRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/experiments': typeof ExperimentsRoute
+  '/login': typeof LoginRoute
+  '/performance': typeof PerformanceRoute
   '/pipeline': typeof PipelineRoute
   '/prompts': typeof PromptsRoute
   '/scale-up': typeof ScaleUpRoute
   '/scorecard': typeof ScorecardRoute
   '/setup': typeof SetupRoute
+  '/week-on-week': typeof WeekOnWeekRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/experiments': typeof ExperimentsRoute
+  '/login': typeof LoginRoute
+  '/performance': typeof PerformanceRoute
   '/pipeline': typeof PipelineRoute
   '/prompts': typeof PromptsRoute
   '/scale-up': typeof ScaleUpRoute
   '/scorecard': typeof ScorecardRoute
   '/setup': typeof SetupRoute
+  '/week-on-week': typeof WeekOnWeekRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/pipeline' | '/prompts' | '/scale-up' | '/scorecard' | '/setup'
-  fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/pipeline' | '/prompts' | '/scale-up' | '/scorecard' | '/setup'
-  id:
-    | '__root__'
     | '/'
+    | '/experiments'
+    | '/login'
+    | '/performance'
     | '/pipeline'
     | '/prompts'
     | '/scale-up'
     | '/scorecard'
     | '/setup'
+    | '/week-on-week'
+  fileRoutesByTo: FileRoutesByTo
+  to:
+    | '/'
+    | '/experiments'
+    | '/login'
+    | '/performance'
+    | '/pipeline'
+    | '/prompts'
+    | '/scale-up'
+    | '/scorecard'
+    | '/setup'
+    | '/week-on-week'
+  id:
+    | '__root__'
+    | '/'
+    | '/experiments'
+    | '/login'
+    | '/performance'
+    | '/pipeline'
+    | '/prompts'
+    | '/scale-up'
+    | '/scorecard'
+    | '/setup'
+    | '/week-on-week'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ExperimentsRoute: typeof ExperimentsRoute
+  LoginRoute: typeof LoginRoute
+  PerformanceRoute: typeof PerformanceRoute
   PipelineRoute: typeof PipelineRoute
   PromptsRoute: typeof PromptsRoute
   ScaleUpRoute: typeof ScaleUpRoute
   ScorecardRoute: typeof ScorecardRoute
   SetupRoute: typeof SetupRoute
+  WeekOnWeekRoute: typeof WeekOnWeekRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -104,6 +167,27 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/experiments': {
+      id: '/experiments'
+      path: '/experiments'
+      fullPath: '/experiments'
+      preLoaderRoute: typeof ExperimentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/performance': {
+      id: '/performance'
+      path: '/performance'
+      fullPath: '/performance'
+      preLoaderRoute: typeof PerformanceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pipeline': {
@@ -141,16 +225,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SetupRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/week-on-week': {
+      id: '/week-on-week'
+      path: '/week-on-week'
+      fullPath: '/week-on-week'
+      preLoaderRoute: typeof WeekOnWeekRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ExperimentsRoute: ExperimentsRoute,
+  LoginRoute: LoginRoute,
+  PerformanceRoute: PerformanceRoute,
   PipelineRoute: PipelineRoute,
   PromptsRoute: PromptsRoute,
   ScaleUpRoute: ScaleUpRoute,
   ScorecardRoute: ScorecardRoute,
   SetupRoute: SetupRoute,
+  WeekOnWeekRoute: WeekOnWeekRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

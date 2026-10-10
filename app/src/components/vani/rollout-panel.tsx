@@ -1,4 +1,5 @@
-// Staged rollout (10 -> 25 -> 50 -> 100) driven by the backend rollout engine.
+// Staged rollout (10% units, one per terminal GLID digit) driven by the backend rollout engine.
+import { useExperimentId } from "@/lib/experiment-scope";
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { Ban, Check, Play, RotateCcw, Square, ThumbsUp } from "lucide-react";
@@ -43,12 +44,14 @@ export function RolloutPanel() {
   const [load, setLoad] = useState<Load>({ kind: "loading" });
   const [primary, setPrimary] = useState("meetingFixed");
   const [busy, setBusy] = useState(false);
+  const scopedId = useExperimentId();
   const [auditKey, setAuditKey] = useState(0);
 
   const refresh = useCallback(async () => {
     try {
       const runs = await listRollouts();
-      const run = runs[0];
+      // Phase E3: the experiment in scope wins; without one, the newest run as before.
+      const run = scopedId ? runs.find((r) => r.experimentId === scopedId) : runs[0];
       if (run) {
         const state = await getRolloutState(run.experimentId);
         setPrimary(state.run.primary);
@@ -56,11 +59,11 @@ export function RolloutPanel() {
         return;
       }
       const exps = await listExperiments();
-      setLoad({ kind: "none", experimentId: exps[0]?.id ?? null });
+      setLoad({ kind: "none", experimentId: scopedId ?? exps[0]?.id ?? null });
     } catch {
       setLoad({ kind: "offline" });
     }
-  }, []);
+  }, [scopedId]);
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -91,8 +94,8 @@ export function RolloutPanel() {
             )}
           </div>
           <p>
-            10% to 25% to 50% to 100%. Each step needs evidence and healthy guardrails; the last
-            step needs your approval.
+            Each terminal GLID digit is one 10% traffic unit. The rollout advances in 10% steps;
+            the final 90% to 100% step needs your approval.
           </p>
         </div>
       </div>
@@ -300,10 +303,10 @@ function RolloutBody({
       </p>
 
       <div className="rollout-actions">
-        <Tip label="Allowed at the 50% gate once the final evidence bar is met">
+        <Tip label="Allowed at the 90% gate once the final evidence bar is met">
           <span>
-            <Button disabled={busy || !can.approve} onClick={() => onAction("approve", "Approved: 50% to 100%")}>
-              <ThumbsUp /> Approve 50% to 100%
+            <Button disabled={busy || !can.approve} onClick={() => onAction("approve", "Approved: 90% to 100%")}>
+              <ThumbsUp /> Approve 90% to 100%
             </Button>
           </span>
         </Tip>

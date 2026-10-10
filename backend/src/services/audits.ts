@@ -51,6 +51,7 @@ export function createAuditService(
         durationSec: req.durationSec,
         answered,
         guardrails: rubric.guardrails,
+        requireKpiBreakdown: true,
       });
       if (hub.cancelled) return;
       stage(id, "guardrails", "done");
@@ -67,6 +68,8 @@ export function createAuditService(
         ...existing,
         status: "done",
         kpis,
+        ...(verdict.breakdown ? { kpiBreakdown: verdict.breakdown } : {}),
+        weights: rubric.weights,
         overall,
         guardrails: verdict.guardrails,
         guardrailsPassed,
@@ -81,11 +84,21 @@ export function createAuditService(
         log.error("audit follow-up failed", { auditId: id, error: err instanceof Error ? err.message : "unknown" });
       }
       stage(id, "saved", "done");
-      emit(id, { type: "result", overall, kpis, guardrailsPassed });
+      emit(id, {
+        type: "result",
+        overall,
+        kpis,
+        guardrailsPassed,
+        ...(verdict.breakdown ? { kpiBreakdown: verdict.breakdown } : {}),
+        weights: rubric.weights,
+        guardrails: verdict.guardrails,
+        ...(verdict.notes ? { notes: verdict.notes } : {}),
+      });
     } catch (err) {
       if (hub.cancelled) return;
-      const message = err instanceof Error ? err.message : "Audit failed";
-      log.error("audit failed", { auditId: id, error: message });
+      const detail = err instanceof Error ? err.message : "unknown error";
+      const message = "The audit could not be completed. Please retry.";
+      log.error("audit failed", { auditId: id, error: detail });
       const existing = await repos.audits.get(id);
       if (existing) {
         await repos.audits.save({ ...existing, status: "error", error: message, completedAt: nowIso() });
@@ -110,6 +123,10 @@ export function createAuditService(
           overall: audit.overall,
           kpis: audit.kpis,
           guardrailsPassed: audit.guardrailsPassed ?? false,
+          ...(audit.kpiBreakdown ? { kpiBreakdown: audit.kpiBreakdown } : {}),
+          ...(audit.weights ? { weights: audit.weights } : {}),
+          ...(audit.guardrails ? { guardrails: audit.guardrails } : {}),
+          ...(audit.notes ? { notes: audit.notes } : {}),
         },
       ];
     }

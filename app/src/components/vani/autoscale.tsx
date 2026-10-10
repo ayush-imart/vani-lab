@@ -32,6 +32,7 @@ export function Autoscale() {
   const [risk, setRisk] = useState<RiskAppetite>("moderate");
   const [thresholdText, setThresholdText] = useState(String(DEFAULT_THRESHOLD_PCT));
   const [running, setRunning] = useState(true);
+  const [simulateOutcomes, setSimulateOutcomes] = useState(false);
   const thresholdPct = Number(thresholdText);
   const validThreshold = Number.isFinite(thresholdPct) && thresholdPct > 0 && thresholdPct < 100;
   const settings: AutoscaleSettings = {
@@ -49,7 +50,7 @@ export function Autoscale() {
     view: state,
     mode,
     reset,
-  } = useAutoscaleSource(settings, running && validThreshold, onRemoteSettings);
+  } = useAutoscaleSource(settings, running && validThreshold, simulateOutcomes, onRemoteSettings);
 
   return (
     <section className="autoscale" aria-labelledby="autoscale-title">
@@ -58,8 +59,12 @@ export function Autoscale() {
           <div className="section-kicker">
             <h2 id="autoscale-title">Autoscale</h2>
             <Pill tone={autoscale ? "green" : "neutral"}>{autoscale ? "On" : "Off"}</Pill>
-            <Pill tone={mode === "backend" ? "green" : "amber"}>
-              {mode === "backend" ? "Live backend" : "Synthetic data"}
+            <Pill tone={mode === "backend" && !simulateOutcomes ? "green" : "amber"}>
+              {mode === "backend"
+                ? simulateOutcomes
+                  ? "Backend + simulated outcomes"
+                  : "Backend data"
+                : "Local preview (synthetic, not saved)"}
             </Pill>
           </div>
           <p>
@@ -80,6 +85,17 @@ export function Autoscale() {
         </div>
       </div>
       <div className="autoscale-controls">
+        <label className="setting-row">
+          <span>
+            Inject simulated outcomes (demo only)
+            {mode === "backend" && simulateOutcomes ? " - writes synthetic calls to the backend" : ""}
+          </span>
+          <Switch
+            checked={simulateOutcomes}
+            onCheckedChange={setSimulateOutcomes}
+            aria-label="Inject simulated outcomes"
+          />
+        </label>
         <label className="setting-row">
           <span>Autoscale</span>
           <Switch checked={autoscale} onCheckedChange={setAutoscale} aria-label="Autoscale" />
@@ -175,7 +191,11 @@ export function Autoscale() {
       <Note>
         Method: {METHOD_NAME} (always-valid sequential test, Beta(1,1) mixing) · alpha ={" "}
         {DEFAULT_ALPHA} · at least {DEFAULT_MIN_TRIALS} calls · evidence restarts after each action.{" "}
-        {mode === "backend" ? "Evidence comes from the backend." : "Sample data only."}
+        {mode !== "backend"
+          ? "Local preview with synthetic data; nothing here is saved or live."
+          : simulateOutcomes
+            ? "Backend evidence now includes injected simulated outcomes."
+            : "Evidence comes from recorded backend calls."}
       </Note>
       <div className="autoscale-log" aria-live="polite">
         {state.events.length === 0 ? (
@@ -200,7 +220,7 @@ export function Autoscale() {
                   </strong>
                   <p>
                     {METHOD_NAME} p = {e.pValue.toFixed(3)} (alpha {DEFAULT_ALPHA}) after {e.calls}{" "}
-                    calls{mode === "backend" ? "" : " · Simulated"}
+                    calls{mode === "backend" ? "" : " · Local preview"}
                   </p>
                 </div>
                 <Pill tone={e.kind === "scale-down" ? "amber" : "green"}>

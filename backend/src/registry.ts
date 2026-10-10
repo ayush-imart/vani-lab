@@ -42,6 +42,10 @@ export function buildServices(repos: Repos, ports: Ports) {
   const versions = createVersionService(repos);
   const performance = createPerformanceService(repos, rubric, autoscale);
   const experiments = createExperimentService(repos, versions);
+  const preprod = createPreprodService(repos, versions, {
+    fakeAuditor: createFakeAuditor(),
+    realAuditor: ports.realAuditor,
+  });
   return {
     rubric,
     notifications,
@@ -49,12 +53,9 @@ export function buildServices(repos: Repos, ports: Ports) {
     versions,
     audits: createAuditService(repos, ports.auditor, rubric, (a, glid) => performance.ingestAudited(a, glid)),
     experiments,
-    rollouts: createRolloutService(repos, experiments, versions, notifications),
+    rollouts: createRolloutService(repos, experiments, versions, notifications, preprod),
     performance,
-    preprod: createPreprodService(repos, versions, {
-      fakeAuditor: createFakeAuditor(),
-      realAuditor: ports.realAuditor,
-    }),
+    preprod,
     sessions: createSessionService(ports.voice ?? NO_VOICE),
   };
 }

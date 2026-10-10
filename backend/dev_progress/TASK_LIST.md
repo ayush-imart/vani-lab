@@ -1,6 +1,12 @@
 # Backend task list
 
-> **Next agenda (2026-10-10):** align the backend to the PM spec [docs/pm-guardrails-and-autoscale-spec.md](../../docs/pm-guardrails-and-autoscale-spec.md) and fix the audit findings. Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked.
+## Current API status (2026-10-10)
+- [~] User correction: use the final GLID digit as one indivisible 10% assignment unit across rollout assignment, stages, simulation, and displayed labels. The former last-two-digit/25% assumptions are being replaced; see root task list and PM-spec addendum.
+- [x] Fixed local startup failure: `experimentSchema` now uses Zod `.safeExtend()` because the base create schema has a refinement. Local `/health` responds `ok`.
+- [ ] Local dev storage is still `memory`; `/experiments` returns an empty list after restart. Connect a persistent local store or seed the intended demo experiment, then verify its ID survives restart. Do not claim IDs from old browser URLs exist unless the API returns them.
+- [x] Backend create-experiment contract rejects duplicate baseline/challenger IDs; verify the exact-two-version cap in the full app path before closing the cross-cutting U7 item.
+
+> **Next agenda (2026-10-10):** align the backend to the PM spec with the user's final-digit/10% allocation correction, then fix the audit findings. Status legend: `[ ]` todo · `[~]` in progress · `[x]` done · `[!]` blocked.
 
 ## NEXT AGENDA — PM spec alignment
 
@@ -64,8 +70,17 @@
 ## G8 — Gates
 - [x] tsc, vitest, eve build, curl each endpoint
 
+## Review fixes (2026-10-10)
+- [x] start checks the challenger pre-prod gate (409 unless `allowSimulatedGate`), records pass/simulated
+- [x] POST /calls idempotent on (glidLast5+bucket, version, at, experimentId); 200 + no 2nd autoscale outcome
+- [x] unknown ingest experimentId -> 404; stage stamped only when run running/paused
+- [x] POST /experiments/:id/rollout/resume (PM, logged)
+- [x] approve only at final stage; step down resets approval
+- [x] ticks on non-running runs do not append decisions
+- [x] optional `experimentId` filter on /calls, /metrics/versions, /metrics/cohorts, /leaderboard; rollout notifications carry experimentId
+
 ## Notes / blockers
-- 2026-10-10: open items: ingest idempotency (no dedup on `(glid, version, at)`), guardrail multiplicity (PM spec question: 9 simultaneous always-valid tests at alpha 0.05), Supabase never run against a Postgres, legacy `/autoscale` still one-sample absolute-threshold.
+- 2026-10-10: open items: (ingest idempotency done, see Review fixes) guardrail multiplicity (PM spec question: 9 simultaneous always-valid tests at alpha 0.05), Supabase never run against a Postgres, legacy `/autoscale` still one-sample absolute-threshold.
 - 2026-10-10: PM spec adopted; backend engine must move from absolute-threshold to B-vs-A mSPRT with guardrails and staged rollout (see NEXT AGENDA).
 - 2026-10-10: two auth/rate-limiter fixes are **uncommitted** in the working tree.
 - 2026-10-09: keys.env has only SARVAM_API_KEY and SARVAM_LLM_API_KEY; no Supabase credentials -> memory repo.
