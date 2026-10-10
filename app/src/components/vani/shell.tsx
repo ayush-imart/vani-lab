@@ -18,6 +18,7 @@ import {
   Check,
   Settings2,
   ShieldCheck,
+  PhoneCall,
   Plus,
   LayoutList,
   LogOut,
@@ -194,6 +195,10 @@ function WorkspaceShell({ path, children }: { path: string; children: React.Reac
                 <ShieldCheck size={16} />
                 <span>Built for safer decisions</span>
               </div>
+              <div className="safety-mark">
+                <PhoneCall size={16} />
+                <span>Testing Seller VANI: IndiaMART sales calls</span>
+              </div>
               <Button
                 variant="ghost"
                 className="nav-item"
@@ -210,6 +215,11 @@ function WorkspaceShell({ path, children }: { path: string; children: React.Reac
       <div className="app-main">
         <header className="topbar">
           <ExperimentPicker />
+          <Tip label="VANI calls sellers as IndiaMART's sales agent and fixes in-person meetings">
+            <span>
+              <Pill tone="blue">Seller VANI · meeting-fixing agent</Pill>
+            </span>
+          </Tip>
           {backend === "online" ? (
             <Pill tone="green">API connected</Pill>
           ) : (
