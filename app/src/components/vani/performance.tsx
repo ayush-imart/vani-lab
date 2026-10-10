@@ -151,10 +151,10 @@ function VersionDetail({
               <Avatar id={id} />
               <div>
                 <DialogTitle>
-                  Version {id} · {v?.title}
+                  Version {id} Â· {v?.title}
                 </DialogTitle>
                 <DialogDescription>
-                  Detailed stats · {row.calls} calls across {row.cohorts} of 10 cohorts · Sample
+                  Detailed stats Â· {row.calls} calls across {row.cohorts} of 10 cohorts Â· Sample
                   data
                 </DialogDescription>
               </div>
@@ -193,7 +193,7 @@ function VersionDetail({
                 <h3 id="vd-cohorts">Cohorts (GLID last digit)</h3>
                 <div className="vd-grid vd-cohorts">
                   {cohortBreakdown(feed, id).map((c) => (
-                    <Tile key={c.digit} label={`Ends in ${c.digit} · ${c.calls} calls`}>
+                    <Tile key={c.digit} label={`Ends in ${c.digit} Â· ${c.calls} calls`}>
                       {c.overall === null ? noData : c.overall.toFixed(1)}
                     </Tile>
                   ))}
